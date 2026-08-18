@@ -105,8 +105,13 @@ When Google Gemini Spark registers a custom app at `gemini.google.com`, it sends
 
 ---
 
-## 9. 24/7 Cloud Deployment Architecture
+## 9. 24/7 Cloud Deployment & True External Keep-Alive Architecture
 - **Vector DB**: Qdrant Cloud AWS cluster (runs 24/7 independently in cloud).
 - **Backend Host**: Deploy repository to Render (`render.yaml`) / Railway (`railway.toml`) / Fly.io / HF Spaces (`Dockerfile`).
+- **External Keep-Alive Engine**:
+  - Internal self-pings within Render container processes do not pass through Render's reverse proxy edge and do not reset the 15-minute idle counter.
+  - Dedicated **GitHub Actions Workflow (`.github/workflows/keep_alive.yml`)** runs every 5 minutes (`*/5 * * * *`) on GitHub's free runners, sending external HTTPS requests to `/api/health`, `/health`, and `/mcp/sse`.
+  - External uptime monitors (UptimeRobot, Cron-Job.org) support both `GET` and `HEAD` probes across all health routes without 405 errors.
 - **Zero Gemini API Key**: Gemini Spark provides 100% of LLM compute on `gemini.google.com`.
 - **Zero Local Dependency**: Once deployed to cloud hosting, local computer can be completely powered off.
+

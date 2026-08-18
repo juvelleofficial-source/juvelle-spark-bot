@@ -79,10 +79,13 @@ async def startup_event():
     asyncio.create_task(keep_alive_background_worker())
 
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/ping", methods=["GET", "HEAD"])
 def health_check():
     """
     Returns system status, active sessions, CRM stats, and vector index metrics.
+    Supports both GET and HEAD methods for external uptime monitors (UptimeRobot, GitHub Actions).
     """
     crm_stats = get_crm_stats()
     return {

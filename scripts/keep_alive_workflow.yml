@@ -1,0 +1,48 @@
+name: Render 24/7 External Keep-Alive Monitor
+
+on:
+  schedule:
+    # Trigger every 5 minutes (GitHub standard cron format)
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Optional custom URL to ping'
+        required: false
+        default: 'https://juvelle-spark-bot.onrender.com'
+
+jobs:
+  ping-render:
+    name: External Ping Keep-Alive
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ping Juvelle Bot Health Endpoint
+        env:
+          DEFAULT_URL: 'https://juvelle-spark-bot.onrender.com'
+          CUSTOM_URL: ${{ github.event.inputs.target_url }}
+        run: |
+          TARGET="${CUSTOM_URL:-$DEFAULT_URL}"
+          echo "=================================================="
+          echo "Target Host: $TARGET"
+          echo "Timestamp: $(date -u)"
+          echo "=================================================="
+          
+          echo "Sending External Inbound HTTP Ping to /api/health..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L --connect-timeout 10 --max-time 30 --retry 2 "$TARGET/api/health")
+          echo "Health Endpoint Status Code: $HTTP_STATUS"
+          
+          echo "Sending External Inbound HTTP Ping to /health..."
+          HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -L --connect-timeout 10 --max-time 30 --retry 2 "$TARGET/health")
+          echo "Root Health Status Code: $HEALTH_STATUS"
+
+          echo "Sending External Inbound Ping to /ping (HEAD method)..."
+          HEAD_STATUS=$(curl -s -I -o /dev/null -w "%{http_code}" -L --connect-timeout 10 --max-time 30 "$TARGET/ping")
+          echo "HEAD Status Code: $HEAD_STATUS"
+
+          if [ "$HTTP_STATUS" -eq 200 ] || [ "$HEALTH_STATUS" -eq 200 ] || [ "$HEAD_STATUS" -eq 200 ]; then
+            echo "✅ Render instance is ALIVE and successfully received external inbound traffic!"
+          else
+            echo "⚠️ Warning: Non-200 response received. Status: $HTTP_STATUS"
+          fi
