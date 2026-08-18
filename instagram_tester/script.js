@@ -365,37 +365,65 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, duration);
     }
 
-    // --- Voice Recording ---
+    // --- Voice Recording State & Handlers ---
+    let isDiscardingVoice = false;
+    let voiceStream = null;
+
+    const voiceCancelBtn = document.getElementById('voiceCancelBtn');
+    const voiceSendBtn = document.getElementById('voiceSendBtn');
+    const voiceActiveMicBtn = document.getElementById('voiceActiveMicBtn');
+
     async function startRecording() {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+            return;
+        }
+
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 showToast("Microphone not supported in this browser. Please allow microphone permissions or use Chrome/Edge.", true);
                 return;
             }
 
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(stream);
+            isDiscardingVoice = false;
+            voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            
+            try {
+                mediaRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(voiceStream);
+            }
+
             audioChunks = [];
-
-            mediaRecorder.ondataavailable = event => audioChunks.push(event.data);
-
-            mediaRecorder.onstop = async () => {
-                const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                const audioFile = new File([audioBlob], "voice_msg.webm", { type: 'audio/webm' });
-                voiceOverlay.classList.add('hidden');
-                clearInterval(recordInterval);
-                sendMessage(null, 'audio', audioFile);
-                stream.getTracks().forEach(track => track.stop());
+            mediaRecorder.ondataavailable = event => {
+                if (event.data && event.data.size > 0) {
+                    audioChunks.push(event.data);
+                }
             };
 
-            mediaRecorder.start();
+            mediaRecorder.onstop = async () => {
+                voiceOverlay.classList.add('hidden');
+                clearInterval(recordInterval);
+                if (voiceStream) {
+                    voiceStream.getTracks().forEach(track => track.stop());
+                    voiceStream = null;
+                }
+
+                if (!isDiscardingVoice && audioChunks.length > 0) {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const audioFile = new File([audioBlob], "voice_msg.webm", { type: 'audio/webm' });
+                    sendMessage(null, 'audio', audioFile);
+                }
+            };
+
+            mediaRecorder.start(250);
             voiceOverlay.classList.remove('hidden');
+            if (voiceTimer) voiceTimer.innerText = "0:00";
             recordStartTime = Date.now();
             recordInterval = setInterval(() => {
                 const diff = Math.floor((Date.now() - recordStartTime) / 1000);
                 const mins = Math.floor(diff / 60);
                 const secs = diff % 60;
-                voiceTimer.innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+                if (voiceTimer) voiceTimer.innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
             }, 1000);
 
         } catch (err) {
@@ -405,16 +433,65 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function stopRecording() {
+    function stopAndSendRecording() {
+        isDiscardingVoice = false;
         if (mediaRecorder && mediaRecorder.state === "recording") {
             mediaRecorder.stop();
         }
     }
 
-    micBtn.addEventListener('mousedown', startRecording);
-    micBtn.addEventListener('mouseup', stopRecording);
-    micBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording(); });
-    micBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+    function cancelRecording() {
+        isDiscardingVoice = true;
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+            mediaRecorder.stop();
+        } else {
+            voiceOverlay.classList.add('hidden');
+            clearInterval(recordInterval);
+            if (voiceStream) {
+                voiceStream.getTracks().forEach(track => track.stop());
+                voiceStream = null;
+            }
+        }
+        showToast("Voice recording cancelled.", false, 2500);
+    }
+
+    // Tap or click mic button to start recording
+    micBtn.addEventListener('click', startRecording);
+
+    // Cancel Button click
+    if (voiceCancelBtn) {
+        voiceCancelBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            cancelRecording();
+        });
+    }
+
+    // Send Button click
+    if (voiceSendBtn) {
+        voiceSendBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            stopAndSendRecording();
+        });
+    }
+
+    // Active Center Mic Button click (also sends)
+    if (voiceActiveMicBtn) {
+        voiceActiveMicBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            stopAndSendRecording();
+        });
+    }
+
+    // Global Key listener for recording: Escape to Cancel, Enter to Send
+    document.addEventListener('keydown', (e) => {
+        if (!voiceOverlay.classList.contains('hidden')) {
+            if (e.key === 'Escape') {
+                cancelRecording();
+            } else if (e.key === 'Enter') {
+                stopAndSendRecording();
+            }
+        }
+    });
 
     // --- Helper to append messages to UI ---
     function addMessageToUI(content, direction = 'sent', msgType = 'text', file = null) {

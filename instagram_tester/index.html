@@ -130,13 +130,23 @@
                 <div class="wave"></div>
                 <div class="wave"></div>
                 <div class="wave"></div>
+                <div class="wave"></div>
+                <div class="wave"></div>
             </div>
             <div class="voice-time" id="voiceTimer">0:00</div>
-            <div class="voice-instruction">Release to send, swipe to cancel</div>
+            <div class="voice-instruction" id="voiceInstruction">Recording... Click Send or Cancel</div>
             <div class="voice-controls">
-                <div class="voice-btn active">
+                <button class="voice-action-btn voice-cancel-btn" id="voiceCancelBtn" title="Cancel recording (Esc)">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span>Cancel</span>
+                </button>
+                <div class="voice-btn active" id="voiceActiveMicBtn" title="Recording active">
                     <i class="fa-solid fa-microphone"></i>
                 </div>
+                <button class="voice-action-btn voice-send-btn" id="voiceSendBtn" title="Send voice note (Enter)">
+                    <i class="fa-solid fa-paper-plane"></i>
+                    <span>Send</span>
+                </button>
             </div>
         </div>
 
