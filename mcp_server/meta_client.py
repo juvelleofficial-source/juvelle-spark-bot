@@ -10,12 +10,14 @@ logger = logging.getLogger(__name__)
 META_PAGE_ACCESS_TOKEN = os.getenv("META_PAGE_ACCESS_TOKEN", None)
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "gemini_spark_secret_verify_token")
 
-def send_meta_graph_reply(recipient_id: str, message_text: str) -> Dict[str, Any]:
+def send_meta_graph_reply(recipient_id: str, message_text: str, custom_token: Optional[str] = None) -> Dict[str, Any]:
     """
     Sends a message reply to a customer via Meta Graph API (Messenger/WhatsApp/Instagram).
     Falls back gracefully to simulated logging if no Meta access token is configured.
     """
-    if not META_PAGE_ACCESS_TOKEN:
+    token = custom_token or os.getenv("META_PAGE_ACCESS_TOKEN", META_PAGE_ACCESS_TOKEN)
+    
+    if not token:
         logger.info(f"[SIMULATED META DISPATCH] Recipient: {recipient_id} | Reply: '{message_text}'")
         return {
             "status": "success",
@@ -24,9 +26,9 @@ def send_meta_graph_reply(recipient_id: str, message_text: str) -> Dict[str, Any
             "message": "Message dispatched successfully (Simulated mode: set META_PAGE_ACCESS_TOKEN for live delivery)."
         }
 
-    url = "https://graph.facebook.com/v19.0/me/messages"
+    url = "https://graph.facebook.com/v21.0/me/messages"
     headers = {
-        "Authorization": f"Bearer {META_PAGE_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
 
@@ -40,7 +42,7 @@ def send_meta_graph_reply(recipient_id: str, message_text: str) -> Dict[str, Any
         req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers)
         with urllib.request.urlopen(req) as response:
             res_data = json.loads(response.read().decode("utf-8"))
-            logger.info(f"Successfully sent Meta message: {res_data}")
+            logger.info(f"Successfully sent Meta message to {recipient_id}: {res_data}")
             return {"status": "success", "mode": "live", "meta_response": res_data}
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8")
@@ -49,3 +51,4 @@ def send_meta_graph_reply(recipient_id: str, message_text: str) -> Dict[str, Any
     except Exception as e:
         logger.error(f"Failed to send Meta message: {e}")
         return {"status": "error", "error": str(e)}
+

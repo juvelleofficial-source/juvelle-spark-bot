@@ -2,17 +2,19 @@ import json
 import logging
 import uuid
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, Response, HTTPException, Query
+from fastapi import APIRouter, Request, Response, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, Response
 from sse_starlette.sse import EventSourceResponse
 
 from mcp_server.tools_registry import MCP_TOOLS_MANIFEST, execute_mcp_tool
 from mcp_server.message_queue import enqueue_facebook_message
-from mcp_server.meta_client import META_VERIFY_TOKEN
+from mcp_server.meta_client import META_VERIFY_TOKEN, send_meta_graph_reply
 
 logger = logging.getLogger(__name__)
 
 mcp_router = APIRouter(prefix="", tags=["Gemini Spark MCP & Meta Webhooks"])
+
+
 
 # ==============================================================================
 # 1. MODEL CONTEXT PROTOCOL (MCP) ENDPOINTS FOR GEMINI SPARK
@@ -235,13 +237,34 @@ def verify_facebook_webhook(
     logger.warning(f"Meta Webhook Token mismatch: expected '{META_VERIFY_TOKEN}', got '{hub_verify_token}'")
     raise HTTPException(status_code=403, detail="Verification token mismatch")
 
+async def process_and_reply_async(sender_id: str, message_text: str, platform: str = "instagram"):
+    """
+    Autonomous background worker that generates a brand-grounded AI reply
+    using Juvelle conversational AI engine and dispatches it immediately via Meta Graph API.
+    """
+    try:
+        from core.juvelle_agent import generate_juvelle_reply
+        logger.info(f"[AUTONOMOUS WORKER] Processing {platform} message from {sender_id}: '{message_text}'")
+        reply_text = generate_juvelle_reply(
+            customer_message=message_text,
+            session_id=sender_id,
+            customer_name=sender_id
+        )
+        logger.info(f"[AUTONOMOUS WORKER] Generated AI reply for {sender_id}: '{reply_text}'")
+        
+        result = send_meta_graph_reply(recipient_id=sender_id, message_text=reply_text)
+        logger.info(f"[AUTONOMOUS WORKER] Meta Graph API dispatch result for {sender_id}: {result}")
+    except Exception as e:
+        logger.error(f"[AUTONOMOUS WORKER] Error processing auto-reply for {sender_id}: {e}", exc_info=True)
+
+
 @mcp_router.post("/webhook/facebook")
 @mcp_router.post("/webhook/instagram")
 @mcp_router.post("/webhook/meta")
-async def receive_facebook_webhook(request: Request):
+async def receive_facebook_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Receives incoming messaging events from Facebook Messenger, WhatsApp, or Instagram DMs.
-    Enqueues messages for Gemini Spark to process via MCP.
+    Enqueues messages for audit and triggers autonomous real-time AI reply worker.
     """
     try:
         data = await request.json()
@@ -260,14 +283,21 @@ async def receive_facebook_webhook(request: Request):
                 message = messaging_event.get("message", {})
                 text = message.get("text")
 
+                # Skip echo messages sent by the bot/page itself
+                if message.get("is_echo"):
+                    continue
+
                 if sender_id and text:
-                    # Enqueue for Gemini Spark / Juvelle Bot to pull and process
+                    # Enqueue for audit / MCP
                     enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
                         platform=platform_name
                     )
                     logger.info(f"Enqueued {platform_name} message from {sender_id}: '{text}'")
+
+                    # Launch autonomous real-time AI response in background task
+                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
@@ -285,7 +315,9 @@ async def receive_facebook_webhook(request: Request):
                             platform="whatsapp"
                         )
                         logger.info(f"Enqueued whatsapp message from {from_number}: '{text}'")
+                        background_tasks.add_task(process_and_reply_async, from_number, text, "whatsapp")
 
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
     return PlainTextResponse("EVENT_RECEIVED", status_code=200)
+

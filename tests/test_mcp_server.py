@@ -119,9 +119,10 @@ class TestGeminiSparkMCPServer(unittest.TestCase):
             "method": "tools/call",
             "params": {
                 "name": "get_pending_facebook_messages",
-                "arguments": {"limit": 5}
+                "arguments": {"limit": 50}
             }
         }
+
         res_call = self.client.post("/mcp/messages", json=call_payload)
         self.assertEqual(res_call.status_code, 200)
         data = res_call.json()
