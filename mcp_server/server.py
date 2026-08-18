@@ -3,7 +3,7 @@ import logging
 import uuid
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Request, Response, HTTPException, Query, BackgroundTasks
-from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, Response
+from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 
 from mcp_server.tools_registry import MCP_TOOLS_MANIFEST, execute_mcp_tool
@@ -211,6 +211,64 @@ def oauth_protected_resource():
         },
         headers={"Access-Control-Allow-Origin": "*"}
     )
+
+@mcp_router.get("/privacy", response_class=HTMLResponse)
+def privacy_policy():
+    """Public Privacy Policy required by Meta Developer Console for Live Production mode."""
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Privacy Policy - Juvelle</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1e293b; }
+            h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+            h2 { color: #334155; margin-top: 24px; }
+        </style>
+    </head>
+    <body>
+        <h1>Privacy Policy for Juvelle Store AI Assistant</h1>
+        <p><strong>Effective Date:</strong> August 19, 2026</p>
+        <p>Juvelle ("we", "our", or "us") provides conversational customer support via Instagram and Facebook Messenger through our automated AI assistant.</p>
+        
+        <h2>1. Information We Collect</h2>
+        <p>We only collect and process incoming customer messages, Instagram user identifiers (scoped IDs), and conversation timestamps necessary to understand and answer your inquiries regarding our women's Churidar tops and apparel collections.</p>
+        
+        <h2>2. How We Use Your Information</h2>
+        <p>Your messages are used strictly in real-time to generate helpful, accurate product recommendations, catalog queries, and customer service answers. We do not sell or rent personal data to third parties.</p>
+        
+        <h2>3. Data Retention & Security</h2>
+        <p>Conversation logs and memory are maintained securely to provide consistent customer support. You may request data deletion at any time by contacting our support team at <em>support@juvelle.store</em>.</p>
+        
+        <h2>4. Contact Us</h2>
+        <p>If you have any questions regarding this Privacy Policy, please reach out to us at <em>support@juvelle.store</em>.</p>
+    </body>
+    </html>
+    """
+
+@mcp_router.get("/terms", response_class=HTMLResponse)
+def terms_of_service():
+    """Public Terms of Service required by Meta Developer Console for Live Production mode."""
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Terms of Service - Juvelle</title>
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1e293b; }
+            h1 { color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        </style>
+    </head>
+    <body>
+        <h1>Terms of Service for Juvelle Store Assistant</h1>
+        <p><strong>Effective Date:</strong> August 19, 2026</p>
+        <p>By interacting with Juvelle's automated customer service assistants on Meta platforms (Instagram, Facebook), you agree to these Terms.</p>
+        <p>Our assistant provides product recommendations, sizing advice, and catalog information for our women's Churidar collection. Product availability and pricing are subject to final confirmation on our official store.</p>
+    </body>
+    </html>
+    """
 
 # ==============================================================================
 # 3. FACEBOOK DEVELOPER (META GRAPH API) WEBHOOK ENDPOINTS
