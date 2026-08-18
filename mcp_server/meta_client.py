@@ -10,12 +10,35 @@ logger = logging.getLogger(__name__)
 META_PAGE_ACCESS_TOKEN = os.getenv("META_PAGE_ACCESS_TOKEN", None)
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "gemini_spark_secret_verify_token")
 
+def _get_token(custom_token: Optional[str] = None) -> Optional[str]:
+    if custom_token:
+        return custom_token
+    token = os.getenv("META_PAGE_ACCESS_TOKEN", None)
+    if token:
+        return token
+    # Try reading from root .env or mcp_server/.env
+    for candidate in [
+        os.path.join(os.path.dirname(__file__), "..", ".env"),
+        os.path.join(os.path.dirname(__file__), ".env"),
+        ".env"
+    ]:
+        if os.path.exists(candidate):
+            try:
+                with open(candidate, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("META_PAGE_ACCESS_TOKEN="):
+                            return line.split("=", 1)[1].strip().strip('"').strip("'")
+            except Exception:
+                pass
+    return None
+
 def send_meta_graph_reply(recipient_id: str, message_text: str, custom_token: Optional[str] = None) -> Dict[str, Any]:
     """
     Sends a message reply to a customer via Meta Graph API (Messenger/WhatsApp/Instagram).
     Falls back gracefully to simulated logging if no Meta access token is configured.
     """
-    token = custom_token or os.getenv("META_PAGE_ACCESS_TOKEN", META_PAGE_ACCESS_TOKEN)
+    token = _get_token(custom_token)
     
     if not token:
         logger.info(f"[SIMULATED META DISPATCH] Recipient: {recipient_id} | Reply: '{message_text}'")
