@@ -1,0 +1,14 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+cloudflared.exe
+*.log
+*.tmp
+.tempmediaStorage/
+.user_uploaded/
+scratch/

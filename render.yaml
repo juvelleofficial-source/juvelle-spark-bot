@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: juvelle-ai-bot
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QDRANT_URL
+        value: https://3c502767-14fe-4ed6-81ef-613b5965d897.us-east-1-1.aws.cloud.qdrant.io
+      - key: QDRANT_API_KEY
+        sync: false
+      - key: QDRANT_COLLECTION_NAME
+        value: juvelle_knowledge

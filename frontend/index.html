@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini + Apache Spark Enterprise RAG Chatbot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="brand-icon">✨⚡</div>
+                <div class="brand-text">
+                    <h1>Gemini + Spark</h1>
+                    <span class="badge free-badge">100% Free / Local</span>
+                </div>
+            </div>
+
+            <!-- System Metrics Card -->
+            <div class="glass-card metrics-card">
+                <h3>System Status</h3>
+                <div class="metric-row">
+                    <span class="metric-label">Ingestion Engine:</span>
+                    <span class="metric-val status-spark" id="spark-status">Apache Spark ⚡</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Indexed Chunks:</span>
+                    <span class="metric-val" id="vector-count">Loading...</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Model Routing:</span>
+                    <span class="metric-val" id="model-tier">Flash / Pro Hybrid</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Memory Tier:</span>
+                    <span class="metric-val">RAM + SQLite</span>
+                </div>
+            </div>
+
+            <!-- Spark Controls -->
+            <div class="glass-card actions-card">
+                <h3>Distributed Operations</h3>
+                <button id="btn-run-spark" class="btn btn-secondary">
+                    <span class="icon">⚡</span> Run Spark Ingestion
+                </button>
+                <button id="btn-consolidate-memory" class="btn btn-secondary">
+                    <span class="icon">🧠</span> Consolidate Memory
+                </button>
+                <button id="btn-inspect-memory" class="btn btn-outline">
+                    <span class="icon">🔍</span> Inspect Memory
+                </button>
+            </div>
+
+            <!-- Ingested Knowledge Base Reference -->
+            <div class="sidebar-section">
+                <h3>Ingested Documents</h3>
+                <div class="doc-list">
+                    <div class="doc-item">
+                        <span class="doc-badge">DOC_001</span>
+                        <span class="doc-name">Cloud Migration Guidelines</span>
+                    </div>
+                    <div class="doc-item">
+                        <span class="doc-badge">DOC_002</span>
+                        <span class="doc-name">Gemini Best Practices</span>
+                    </div>
+                    <div class="doc-item">
+                        <span class="doc-badge">DOC_003</span>
+                        <span class="doc-name">Memory Architecture Protocol</span>
+                    </div>
+                    <div class="doc-item">
+                        <span class="doc-badge">DOC_004</span>
+                        <span class="doc-name">Security & Access Control</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-container">
+            <header class="chat-header">
+                <div class="header-info">
+                    <h2>Enterprise Knowledge Assistant</h2>
+                    <p>Distributed RAG powered by Apache Spark with multi-tier memory & Google Gemini reasoning.</p>
+                </div>
+                <div class="session-info">
+                    <span class="pulse-dot"></span>
+                    <span id="session-display">Session: default_session</span>
+                </div>
+            </header>
+
+            <!-- Chat Messages Log -->
+            <div class="messages-area" id="messages-container">
+                <!-- Welcome Message -->
+                <div class="message assistant-message">
+                    <div class="avatar">✨</div>
+                    <div class="message-content">
+                        <p>Hello! I am your <strong>Gemini + Apache Spark RAG Assistant</strong> operating 100% locally and completely free.</p>
+                        <p>You can ask me questions about your ingested enterprise documents, system architecture, memory protocols, or Spark ETL pipelines.</p>
+                        <div class="quick-prompts">
+                            <button class="quick-btn" data-query="How does Apache Spark handle distributed document ingestion and chunking for RAG?">How does Spark handle RAG ingestion?</button>
+                            <button class="quick-btn" data-query="Explain how the multi-tier memory architecture keeps conversation state reliable.">Explain multi-tier memory</button>
+                            <button class="quick-btn" data-query="What is the difference between Gemini Flash and Gemini Pro in this setup?">Gemini Flash vs Pro routing</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Citations Strip -->
+            <div class="citations-container" id="citations-container" style="display: none;">
+                <div class="citations-header">
+                    <span>📚 Grounded Sources (Spark Vector Store):</span>
+                </div>
+                <div class="citations-list" id="citations-list"></div>
+            </div>
+
+            <!-- Chat Input Bar -->
+            <footer class="chat-input-bar">
+                <form id="chat-form" class="input-form">
+                    <input 
+                        type="text" 
+                        id="user-input" 
+                        placeholder="Ask a question grounded in your Spark knowledge base..." 
+                        autocomplete="off" 
+                        required
+                    >
+                    <button type="submit" id="btn-send" class="btn btn-primary">
+                        <span>Send</span>
+                        <span class="send-icon">➤</span>
+                    </button>
+                </form>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Memory Inspector Modal -->
+    <div class="modal" id="memory-modal">
+        <div class="modal-backdrop" id="modal-backdrop"></div>
+        <div class="modal-content glass-card">
+            <div class="modal-header">
+                <h3>🧠 Conversational Memory Inspector</h3>
+                <button class="close-modal" id="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <h4>Short-Term Working Window (Fast RAM):</h4>
+                <pre class="code-block" id="short-term-memory-json">Loading...</pre>
+                
+                <h4>Long-Term User Profile (Consolidated by Spark):</h4>
+                <div class="profile-card" id="user-profile-display">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
