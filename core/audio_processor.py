@@ -25,7 +25,8 @@ CANDIDATE_AUDIO_MODELS = [
 
 VOICE_REPLY_TRIGGERS = [
     "voice message", "voice note", "audio message", "audio note", "parayumo", "parayuu",
-    "ayakkumo", "send voice", "voice il", "voice aayitt", "voiceil", "speak to me", "voice reply"
+    "ayakkumo", "send voice", "voice il", "voice aayitt", "voiceil", "speak to me", "voice reply",
+    "bolke batao", "audio bhejo", "voice bhejo", "batao", "solli anupunga", "pesunga", "solren"
 ]
 
 UNIFIED_AUDIO_PROMPT = """
@@ -33,22 +34,21 @@ You are the voice listener and support assistant for Juvelle, a premium women's 
 Listen to this customer voice note audio carefully.
 
 DOMAIN KNOWLEDGE & PHONETIC HINTS:
-- Products: Exclusively daily wear and office wear Churidar tops / kurtis (sizes XS to 4XL, prices ₹499 to ₹1,299).
-- We do NOT sell full sets, churidar bottoms, dupattas, or men's/kids wear.
-- Shipping & COD: Pan-India delivery available, Cash on Delivery (COD) supported across Kerala and major cities.
-- Store: Online store based in Kochi, Kerala.
-- Spoken Language: English, Malayalam, or colloquial Manglish (Malayalam written in English script).
-- Common phonetic terms: 'churidhar undo', 'kurti', 'ethraya', 'rate', 'price', 'kanikku', 'parayuu', 'daily wear', 'office wear', 'cash on delivery', 'cod', 'size', 'colour', 'stock'.
+- Products: Exclusively daily wear pure cotton and office wear soft rayon Churidar tops / kurtis (sizes S to XXL, prices ₹399 to ₹899).
+- Exclusions: We do NOT sell sarees, frocks, jeans, t-shirts, churidar bottoms, dupattas, or men's/kids wear.
+- Shipping & Payment: Kerala delivery only via Delhivery (2-3 business days, ₹50). 100% advance UPI payment. No Cash on Delivery (COD).
+- Ordering: Orders are placed directly via Instagram DM (screenshot + size).
+- Multilingual Voice Recognition: You natively understand English, Malayalam, Manglish (Malayalam in English script), Hindi, Hinglish (Hindi in English script), Tamil, Tanglish (Tamil in English script), Telugu, Kannada, Arabic, and all languages.
 
 INSTRUCTIONS:
-1. Accurately transcribe the spoken words. If spoken in Manglish, write natural Manglish. If spoken in English, write in English. If Malayalam, write in Malayalam script.
-2. Identify the language: 'english', 'manglish', or 'malayalam_script'.
-3. Formulate a warm, professional, concise Juvelle support reply (1-3 sentences) strictly in the detected language.
+1. Accurately transcribe the spoken words. Preserve the natural dialect/transliteration (e.g. Manglish in English alphabet, Hinglish in English alphabet, Tanglish in English alphabet, or native script).
+2. Identify the language or dialect: (e.g. 'english', 'manglish', 'malayalam_script', 'hinglish', 'hindi_script', 'tanglish', 'tamil_script', etc.).
+3. Formulate a warm, professional, concise Juvelle support reply (1-2 sentences) strictly in the detected language/dialect.
 
 OUTPUT FORMAT (Strictly format as):
 TRANSCRIPT: <transcribed text>
-LANGUAGE: <english|manglish|malayalam_script>
-REPLY: <juvelle customer support reply>
+LANGUAGE: <detected language>
+REPLY: <juvelle customer support reply in the exact detected language>
 """
 
 def check_voice_reply_requested(text: str) -> bool:
@@ -59,7 +59,7 @@ def check_voice_reply_requested(text: str) -> bool:
     return any(trigger in text_lower for trigger in VOICE_REPLY_TRIGGERS)
 
 def generate_tts_base64(text: str, language: str = "english") -> Optional[str]:
-    """Generates an MP3 audio voice note using gTTS and returns base64 data URI."""
+    """Generates an MP3 audio voice note using gTTS across multilingual speech engines."""
     try:
         clean_text = re.sub(r'[*#_`~]', '', text).strip()
         if not clean_text:
@@ -67,9 +67,29 @@ def generate_tts_base64(text: str, language: str = "english") -> Optional[str]:
 
         lang_code = 'en'
         tld = 'co.in'
-        if language == "malayalam_script":
+
+        lang_lower = (language or "english").lower()
+        if "malayalam" in lang_lower:
             lang_code = 'ml'
             tld = 'com'
+        elif "hindi" in lang_lower:
+            lang_code = 'hi'
+            tld = 'co.in'
+        elif "tamil" in lang_lower:
+            lang_code = 'ta'
+            tld = 'co.in'
+        elif "telugu" in lang_lower:
+            lang_code = 'te'
+            tld = 'co.in'
+        elif "arabic" in lang_lower:
+            lang_code = 'ar'
+            tld = 'com'
+        elif lang_lower in ["hinglish"]:
+            lang_code = 'hi'
+            tld = 'co.in'
+        else:
+            lang_code = 'en'
+            tld = 'co.in'
 
         tts = gTTS(text=clean_text, lang=lang_code, tld=tld, slow=False)
         fp = io.BytesIO()
@@ -84,7 +104,7 @@ def generate_tts_base64(text: str, language: str = "english") -> Optional[str]:
 def transcribe_audio_with_gemini(audio_bytes: bytes, mime_type: str = "audio/webm") -> Dict[str, str]:
     """
     Directly transcribes customer voice note using Gemini Multimodal Audio reasoning.
-    Accurately recognizes English, Malayalam script, and colloquial Manglish.
+    Accurately recognizes English, Manglish, Malayalam, Hinglish, Hindi, Tanglish, Tamil, Telugu, and all languages.
     """
     client = get_genai_client()
     if not client:
@@ -96,14 +116,14 @@ def transcribe_audio_with_gemini(audio_bytes: bytes, mime_type: str = "audio/web
     transcription_prompt = """
 You are the voice listener for Juvelle Boutique customer support in Kerala.
 Listen to this customer voice note carefully and perform 2 tasks:
-1. Transcribe the spoken words EXACTLY as spoken. If spoken in Manglish (Malayalam words written in English letters like 'churidhar undo', 'price ethraya'), write the transcript in natural Manglish. If spoken in English, write in English. If spoken in Malayalam, write in Malayalam script.
-2. Identify the language ('english', 'manglish', or 'malayalam_script').
+1. Transcribe the spoken words EXACTLY as spoken. If spoken in transliterated dialects (Manglish, Hinglish, Tanglish), write the transcript in natural Latin script. If in native script (Malayalam, Hindi, Tamil, Arabic), transcribe in that script.
+2. Identify the language (e.g. 'english', 'manglish', 'malayalam_script', 'hinglish', 'hindi_script', 'tanglish', 'tamil_script').
 
-Domain Vocabulary: Churidar tops, kurtis, daily wear, office wear, size XS to 4XL, cotton, rayon, silk, ₹499 to ₹1299, cash on delivery, ethraya, undo, kanikku, parayuu.
+Domain Vocabulary: Churidar tops, kurtis, daily wear, office wear, size S to XXL, cotton, rayon, ₹399 to ₹899, delivery, Delhivery, Kerala, UPI, Instagram screenshot.
 
 Format your response strictly as:
 TRANSCRIPT: <exact transcribed text>
-LANGUAGE: <english|manglish|malayalam_script>
+LANGUAGE: <detected language>
 """
 
     for model_name in CANDIDATE_AUDIO_MODELS:
@@ -126,7 +146,7 @@ LANGUAGE: <english|manglish|malayalam_script>
                     t_part, l_part = parts.split("LANGUAGE:", 1)
                     transcript = t_part.strip()
                     lang_candidate = l_part.strip().lower()
-                    if lang_candidate in ["english", "manglish", "malayalam_script"]:
+                    if lang_candidate:
                         lang = lang_candidate
                 else:
                     transcript = parts.strip()
@@ -153,8 +173,8 @@ def process_voice_message(
     customer_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    High-speed, accurate unified voice message pipeline:
-    1. Attempts fast single-pass multimodal audio reasoning with Gemini 2.0 Flash (~1.1s latency).
+    High-speed, accurate unified polyglot voice message pipeline:
+    1. Attempts fast single-pass multimodal audio reasoning with Gemini (~1.1s latency).
     2. Falls back to 2-stage grounded RAG pipeline if needed.
     3. Conditionally generates TTS voice reply if customer requested audio.
     """
@@ -191,10 +211,10 @@ def process_voice_message(
                         transcript = t_val.strip()
                         reply_text = r_val.strip()
                     
-                    if detected_lang not in ["english", "manglish", "malayalam_script"]:
+                    if not detected_lang:
                         detected_lang = "english"
 
-                    logger.info(f"Single-pass audio success via {model_name}: '{transcript}' -> '{reply_text[:60]}...'")
+                    logger.info(f"Single-pass audio success via {model_name} [{detected_lang}]: '{transcript}' -> '{reply_text[:60]}...'")
                     break
             except Exception as ex:
                 logger.warning(f"Single-pass audio model '{model_name}' notice: {ex}")

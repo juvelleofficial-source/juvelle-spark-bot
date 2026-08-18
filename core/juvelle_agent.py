@@ -30,8 +30,21 @@ MANGLISH_INDICATORS = {
     "illa", "alle", "kootuthal", "keralathil", "evide", "ivide", "engane", "enganeya", "vellom", "onnum",
     "matte", "ithu", "athu", "njan", "nammal", "nammude", "ningal", "valare", "ippol", "eppo", "vannu",
     "vannilla", "kittumo", "kittum", "venam", "venda", "sahayam", "tharam", "ayakkanam", "ayakkamo",
-    "nalla", "ishtam", "undallo", "undath", "cheytholu", "nokkikoloo", "evideya", "aayitt", "ariyatte",
-    "ariyamo", "manasilayi", "onnumilla", "kurti", "churithar", "churidhar"
+    "undallo", "undath", "cheytholu", "nokkikoloo", "evideya", "aayitt", "ariyatte", "ariyamo", "manasilayi",
+    "onnumilla", "churithar", "churidhar"
+}
+
+HINGLISH_INDICATORS = {
+    "hai", "hain", "kya", "kare", "kaise", "kitna", "kitne", "chahiye", "bhai", "aap", "aapka", "aapke",
+    "nahi", "dikhao", "batao", "daam", "kapda", "accha", "achha", "muje", "mujhe", "bhejo",
+    "kardo", "milega", "milegi", "hoga", "hogi", "bolo", "bataiye", "paas", "dijiye", "shukriya", "dhanyawad",
+    "dekhna", "kharidna", "bhejiye", "pata", "sahi", "dupatta", "kurtiyan", "kab", "tak", "karo", "bhi", "toh"
+}
+
+TANGLISH_INDICATORS = {
+    "irukka", "irukku", "evvalavu", "sollunga", "pannunga", "enna", "vanganum",
+    "kudunga", "theriyuma", "romba", "illai", "solren", "kedaikkuma", "yenna", "panreenga",
+    "parunga", "venum", "kodu", "annachi", "engitta", "epdi", "eppadi", "ungalukku", "kudupingala"
 }
 
 def detect_query_language(
@@ -40,43 +53,58 @@ def detect_query_language(
     preferred_language: Optional[str] = None
 ) -> str:
     """
-    Deterministically detects whether the customer is speaking in English, Manglish, or Malayalam Script.
-    Prevents English messages from mistakenly switching into Manglish mode.
+    Deterministically detects customer language and script across English, Manglish, Malayalam,
+    Hinglish, Hindi, Tanglish, Tamil, Telugu, Kannada, Arabic, and universal polyglot inputs.
     """
     if not message or not message.strip():
         return preferred_language or "english"
 
     msg_clean = message.lower().strip()
 
-    # 1. Malayalam Unicode Script Detection
-    malayalam_chars = len(re.findall(r'[\u0D00-\u0D7F]', message))
-    if malayalam_chars >= 2:
-        return "malayalam_script"
+    # 1. Unicode Script Detections with character count dominance
+    script_counts = {
+        "malayalam_script": len(re.findall(r'[\u0D00-\u0D7F]', message)),
+        "hindi_script": len(re.findall(r'[\u0900-\u097F]', message)),
+        "tamil_script": len(re.findall(r'[\u0B80-\u0BFF]', message)),
+        "telugu_script": len(re.findall(r'[\u0C00-\u0C7F]', message)),
+        "kannada_script": len(re.findall(r'[\u0C80-\u0CFF]', message)),
+        "arabic_script": len(re.findall(r'[\u0600-\u06FF]', message))
+    }
+    dominant_script, max_count = max(script_counts.items(), key=lambda x: x[1])
+    if max_count >= 2:
+        return dominant_script
 
     words = set(re.findall(r'[a-zA-Z]+', msg_clean))
 
-    # 2. Check for explicit Manglish indicator words
-    manglish_keywords = words.intersection(MANGLISH_INDICATORS)
-    if manglish_keywords:
-        # If the only match is 'churithar'/'churidhar'/'kurti' and clear English words exist (e.g. "churithars only?"), classify as English
-        if manglish_keywords.issubset({"churithar", "churidhar", "kurti"}) and words.intersection({"only", "for", "do", "you", "u", "have", "is", "are", "what", "show", "me", "how", "much", "needed", "need", "nephew", "t-shirt", "shirt"}):
+    manglish_count = len(words.intersection(MANGLISH_INDICATORS))
+    hinglish_count = len(words.intersection(HINGLISH_INDICATORS))
+    tanglish_count = len(words.intersection(TANGLISH_INDICATORS))
+
+    # If clothing terms match but with clear English grammar words
+    if manglish_count > 0 and words.intersection(MANGLISH_INDICATORS).issubset({"churithar", "churidhar"}):
+        if words.intersection({"only", "for", "do", "you", "u", "have", "is", "are", "what", "show", "me", "how", "much", "needed", "need", "nephew", "t-shirt", "shirt"}):
             return "english"
-        return "manglish"
 
-    # 3. Check for neutral / single-word tokens ("hi", "hello", "hey", "ok", "yes", "no", "sure", "fine")
-    neutral_tokens = {"hi", "hello", "hey", "hai", "helo", "hlo", "ok", "okay", "yes", "no", "sure", "fine", "cool", "done", "kk", "thanks", "thank"}
-    if words.issubset(neutral_tokens) or not words:
-        if preferred_language in ["english", "manglish", "malayalam_script"]:
-            return preferred_language
-        if history:
-            for turn in reversed(history):
-                if turn.get("role") == "user":
-                    past_lang = detect_query_language(turn.get("content", ""))
-                    if past_lang in ["english", "manglish", "malayalam_script"]:
-                        return past_lang
-        return "english"
+    if max(manglish_count, hinglish_count, tanglish_count) > 0:
+        if hinglish_count > manglish_count and hinglish_count >= tanglish_count:
+            return "hinglish"
+        elif tanglish_count > manglish_count and tanglish_count >= hinglish_count:
+            return "tanglish"
+        elif manglish_count >= hinglish_count and manglish_count >= tanglish_count:
+            return "manglish"
 
-    # 4. Default to English
+    # Contextual memory inheritance from previous conversational turns
+    if history:
+        for turn in reversed(history):
+            if turn.get("role") == "user":
+                prev_text = turn.get("content", "")
+                prev_lang = detect_query_language(prev_text, history=None, preferred_language=None)
+                if prev_lang not in ["english"]:
+                    return prev_lang
+
+    if preferred_language:
+        return preferred_language
+
     return "english"
 
 def get_genai_client() -> Optional[genai.Client]:
@@ -113,47 +141,60 @@ JUVELLE_SYSTEM_PROMPT = """You are the friendly, professional, and helpful Custo
   - If the customer introduces their name (e.g., "am sahil and u?", "hi I am Sneha"):
     - English: "Hey [Name]! Welcome to Juvelle. I am Juvelle's customer support assistant. How can I help you today?"
     - Manglish: "Hey [Name]! Welcome to Juvelle. Njan Juvelle inte customer support assistant aanu. Enganeya help cheyyendath?"
+    - Hinglish: "Hey [Name]! Welcome to Juvelle. Main Juvelle ka customer support assistant hoon. Kaise madad kar sakta hoon?"
+    - Hindi: "नमस्ते [Name]! Juvelle में आपका स्वागत है। मैं Juvelle का कस्टमर सपोर्ट असिस्टेंट हूँ। आज मैं आपकी क्या मदद कर सकता हूँ?"
   - If generic hello:
-    - English Customer: "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
-    - Manglish Customer: "Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?"
+    - English: "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
+    - Manglish: "Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?"
+    - Hinglish: "Hey there! Welcome to Juvelle. Hum daily aur office wear Churidar tops mein specialize karte hain. Kaise help karoon?"
+    - Hindi: "नमस्ते! Juvelle में आपका स्वागत है। हम डेली और ऑफिस वियर चूड़ीदार टॉप्स में स्पेशलाइज करते हैं। मैं आपकी क्या मदद कर सकता हूँ?"
 - RETURNING CUSTOMER (Resuming conversation after inactivity > 3 hours):
-  - English Customer: "Hey again! Welcome back to Juvelle. How can I help you today?"
-  - Manglish Customer: "Hey again! Welcome back to Juvelle. Enganeya help cheyyendath?"
+  - English: "Hey again! Welcome back to Juvelle. How can I help you today?"
+  - Manglish: "Hey again! Welcome back to Juvelle. Enganeya help cheyyendath?"
+  - Hinglish: "Hey again! Welcome back to Juvelle. Kaise help karoon?"
 - ACTIVE ONGOING CONVERSATION (< 3 hours since last message): NEVER repeat "Welcome to Juvelle" or deliver a company intro! Jump straight into answering their question directly.
-  - If English customer says "hi/hello": "Hey! Yes, tell me, how can I help you today?"
-  - If Manglish customer says "hi/hai": "Hey! Parayuu, enganeya help cheyyendathu?"
+  - English: "Hey! Yes, tell me, how can I help you today?"
+  - Manglish: "Hey! Parayuu, enganeya help cheyyendathu?"
+  - Hinglish: "Hey! Haan bataiye, kaise madad karoon?"
 
 # Image & Catalog Rules (STRICT & CRITICAL):
 - Image/photo sending is NOT currently available in this chat.
 - NEVER ask the customer "photo send cheyyatte?" or offer to send photos/images!
-- If a customer asks to see designs/photos/collections (e.g., "kanikku", "show me photos", "images undo", "designs kanikku"):
+- If a customer asks to see designs/photos/collections (e.g., "kanikku", "show me photos", "dikhao", "designs kanikku"):
   - English: "You can view our latest daily wear pure cotton and office wear soft rayon tops (₹399–₹899, sizes S–XXL) on our Instagram page posts and highlights. Please send a screenshot of any top you like here to place your order!"
   - Manglish: "Nammalude pure breathable cotton daily wear and soft rayon office wear Churidar tops (₹399 muthal ₹899 vare, sizes S to XXL) Instagram page posts and highlightsil kaanaam. Ishtappetta top inte screenshot ivide send cheythaal order cheyyaam!"
+  - Hinglish: "Aap hamare latest pure cotton daily wear aur soft rayon office wear Churidar tops (₹399–₹899, sizes S–XXL) hamare Instagram page posts aur highlights par dekh sakte hain. Jo bhi pasand aaye, screenshot bhejkar order kar sakte hain!"
+  - Hindi: "आप हमारे लेटेस्ट प्योर कॉटन डेली वियर और सॉफ्ट रेयॉन ऑफिस वियर टॉप्स (₹399–₹899, साइज़ S–XXL) हमारे इंस्टाग्राम पेज पर देख सकते हैं। अपनी पसंद का स्क्रीनशॉट भेजकर आर्डर कर सकते हैं।"
 
 # Audio & Voice Message Perception Rules (CRITICAL):
 - You HAVE FULL capability to listen to and process customer voice notes and audio messages directly in this chat.
-- If a customer asks if you can hear them, understand audio, or listen to voice notes (e.g., "can you hear me?", "voice note kekkumo?", "can i send audio?", "can u hear audio messages?"):
+- If a customer asks if you can hear them, understand audio, or listen to voice notes (e.g., "can you hear me?", "voice note kekkumo?", "kya audio sun sakte ho?"):
   - English: "Yes! I can hear and understand your voice messages. Feel free to send voice notes or type here, and I'll assist you with our Churidar tops."
   - Manglish: "Athe! Enikku voice notes kett manasilakkan pattum. Voice message aayitto type cheytho parayaam, njan help cheyyaam."
+  - Hinglish: "Haan! Main aapke voice messages sun aur samajh sakta hoon. Aap audio ya type karke pooch sakte hain."
   - Malayalam: "അതെ! എനിക്ക് വോയ്സ് മെസ്സേജുകൾ കേൾക്കാനും മനസ്സിലാക്കാനും സാധിക്കും. നിങ്ങൾക് വോയ്സ് ആയോ ടൈപ്പ് ചെയ്തോ ചോദിക്കാം."
+  - Hindi: "हाँ! मैं आपके वॉयस मैसेज सुन और समझ सकता हूँ। आप वॉयस भेजकर या टाइप करके पूछ सकते हैं।"
 - NEVER claim "this chat is text-only" or "I cannot hear audio"!
 
 # Conversation Pacing & Direct Answers (STRICT):
-- Do NOT interrogate the customer with multiple back-to-back qualifying questions (e.g. "cotton or rayon?", "which color?", "daily or office?").
+- Do NOT interrogate the customer with multiple back-to-back qualifying questions.
 - When a customer asks for a category (like daily wear), immediately share the product details, fabric, and price range, and explain how to order.
 - Ask at most ONE simple closing question only when strictly necessary (e.g. "Which size are you looking for?" / "Ethu size aanu nokkunnath?").
 
-# Strict Language Mirroring & Manglish Rules (CRITICAL):
-- STRICT LANGUAGE LOCK:
-  - When the customer speaks in English (e.g. "i need a t shirt", "churithars only?", "what is the price?"), you MUST reply in 100% fluent, professional English. NEVER switch to Manglish or Malayalam!
-  - When the customer speaks in Manglish (e.g. "kanikku", "rate ethraya", "keralathil delivery undo"), reply in natural Manglish.
-  - When the customer speaks in Malayalam script, reply in clean Malayalam script.
-- MANGLISH PURITY (When responding in Manglish):
-  - Use ONLY 100% English alphabet letters. NEVER mix Malayalam script characters (e.g. ക്കേണ്ട, ്, ം) inside English words.
-  - NO HYPHENS (-): Real humans never type hyphens attached to words in chat.
-    - WRONG: Juvelle-te, Kerala-il, delivery-kku, order-inte, brand-nte, available-aanu
-    - RIGHT: Juvelle inte, Kerala yil (or Keralathil), deliverykku, order cheyyan, brand inte, available aanu
-  - POSSESSIVE: Always use 'inte' (e.g. "Juvelle inte"), NEVER use "-te" or "Juvelle-te".
+# Universal Polyglot & Language Mirroring Protocol (CRITICAL):
+- STRICT LANGUAGE MIRRORING:
+  - You MUST mirror the exact language, dialect, and transliteration used by the customer!
+  - When the customer speaks/types in English -> Reply in 100% fluent, professional English.
+  - When the customer speaks/types in Manglish -> Reply in natural Manglish (English letters only, no hyphens, natural Malayalam transliteration).
+  - When the customer writes in Malayalam Script -> Reply in clean Malayalam script.
+  - When the customer speaks/types in Hinglish -> Reply in natural, friendly Hinglish using English alphabet letters (e.g., 'Hamare paas pure cotton daily wear tops ₹399 se shuru hote hain. Kaunsa size chahiye?').
+  - When the customer writes in Hindi Script (Devanagari) -> Reply in polite Hindi script.
+  - When the customer speaks/types in Tanglish -> Reply in natural Tanglish (Tamil in English alphabet).
+  - When the customer writes in Tamil Script -> Reply in Tamil script.
+  - When the customer uses Telugu, Kannada, Arabic, or any other language -> Reply in that customer's exact language & script!
+- MANGLISH / TRANSLITERATION PURITY:
+  - When responding in transliterated languages (Manglish, Hinglish, Tanglish), use ONLY 100% English alphabet letters. Never mix regional script characters into Latin words.
+  - NO HYPHENS (-): Real humans never type hyphens attached to words in chat (e.g., use 'Juvelle inte', 'Kerala yil', 'deliverykku').
 
 # Brand Facts:
 - Specialty: Exclusively women's Churidar tops (pure cotton & soft rayon blends, ₹399 to ₹899, sizes S to XXL).
@@ -280,6 +321,14 @@ def generate_live_neural_reply(
             return "Hey! Parayuu, enganeya help cheyyendathu?"
         elif detected_lang == "malayalam_script":
             return "ഹലോ! പറയൂ, എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?"
+        elif detected_lang == "hinglish":
+            return "Hey! Haan bataiye, kaise help karoon?"
+        elif detected_lang == "hindi_script":
+            return "नमस्ते! हाँ बताइए, मैं आपकी क्या मदद कर सकता हूँ?"
+        elif detected_lang == "tanglish":
+            return "Hey! Sollunga, eppadi help panradhu?"
+        elif detected_lang == "tamil_script":
+            return "வணக்கம்! சொல்லுங்கள், உங்களுக்கு எப்படி உதவ வேண்டும்?"
         return "Hey! Yes, tell me, how can I help you today?"
 
     # 3. Retrieve grounded knowledge chunks from Qdrant Cloud / BM25
@@ -293,17 +342,42 @@ def generate_live_neural_reply(
         lang_directive = (
             "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in ENGLISH. "
             "You MUST reply in 100% fluent, natural ENGLISH. "
-            "DO NOT use ANY Malayalam or Manglish words (such as 'Athe', 'nammalude', 'undo', 'aanu', 'parayuu', 'kaanikku')."
+            "DO NOT use ANY Malayalam, Hindi, or Manglish words."
         )
     elif detected_lang == "malayalam_script":
         lang_directive = (
             "CRITICAL LANGUAGE ENFORCEMENT: The customer is typing in MALAYALAM SCRIPT. "
             "You MUST reply in clean, grammatically correct MALAYALAM SCRIPT only."
         )
-    else:
+    elif detected_lang == "hindi_script":
+        lang_directive = (
+            "CRITICAL LANGUAGE ENFORCEMENT: The customer is typing in HINDI SCRIPT (Devanagari). "
+            "You MUST reply in polite, clean Hindi in Devanagari script."
+        )
+    elif detected_lang == "tamil_script":
+        lang_directive = (
+            "CRITICAL LANGUAGE ENFORCEMENT: The customer is typing in TAMIL SCRIPT. "
+            "You MUST reply in polite Tamil script only."
+        )
+    elif detected_lang == "hinglish":
+        lang_directive = (
+            "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in HINGLISH (Hindi in English letters, e.g. 'kya price hai', 'cotton top dikhao'). "
+            "You MUST reply in natural, polite HINGLISH using ONLY 100% English alphabet letters."
+        )
+    elif detected_lang == "tanglish":
+        lang_directive = (
+            "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in TANGLISH (Tamil in English letters, e.g. 'kurti irukka', 'price evvalavu'). "
+            "You MUST reply in natural, polite TANGLISH using ONLY 100% English alphabet letters."
+        )
+    elif detected_lang == "manglish":
         lang_directive = (
             "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in MANGLISH (Malayalam in English letters). "
             "Reply in natural, polite Manglish without hyphens or Malayalam Unicode script bleed."
+        )
+    else:
+        lang_directive = (
+            f"CRITICAL LANGUAGE ENFORCEMENT: The customer is communicating in '{detected_lang}'. "
+            f"Seamlessly mirror and reply in the customer's exact language and dialect."
         )
 
     # 5. Formulate Session Lifecycle & Greeting Directive
@@ -312,6 +386,31 @@ def generate_live_neural_reply(
             lifecycle_directive = (
                 "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in English and introduce the brand: "
                 "'Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?'"
+            )
+        elif detected_lang == "hinglish":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Hinglish and introduce the brand: "
+                "'Hey there! Welcome to Juvelle. Hum daily aur office wear Churidar tops mein specialize karte hain. Kaise help karoon?'"
+            )
+        elif detected_lang == "hindi_script":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Hindi and introduce the brand: "
+                "'नमस्ते! Juvelle में आपका स्वागत है। हम डेली और ऑफिस वियर चूड़ीदार टॉप्स में स्पेशलाइज करते हैं। मैं आपकी क्या मदद कर सकता हूँ?'"
+            )
+        elif detected_lang == "tanglish":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Tanglish and introduce the brand: "
+                "'Hey there! Welcome to Juvelle. Nanga daily and office wear Churidar topsla specialize panrom. Eppadi help panradhu?'"
+            )
+        elif detected_lang == "tamil_script":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Tamil and introduce the brand: "
+                "'வணக்கம்! Juvelle-க்கு நல்வரவு. நாங்கள் டெய்லி மற்றும் ஆபீஸ் வேர் சுடிதார் டாப்களில் ஸ்பெஷலைஸ் செய்கிறோம். எப்படி உதவ வேண்டும்?'"
+            )
+        elif detected_lang == "malayalam_script":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Malayalam script and introduce the brand: "
+                "'ഹലോ! Juvelle-ലേക്ക് സ്വാഗതം. ഞങ്ങൾ ഡെയ്‌ലി, ഓഫീസ് വെയർ ചുരിദാർ ടോപ്പുകളിൽ സ്പെഷ്യലൈസ് ചെയ്യുന്നു. എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?'"
             )
         else:
             lifecycle_directive = (
@@ -325,6 +424,11 @@ def generate_live_neural_reply(
             lifecycle_directive = (
                 f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
                 "Start your reply in English by welcoming them back warmly: 'Welcome back to Juvelle! How can I help you today?' before answering."
+            )
+        elif detected_lang == "hinglish":
+            lifecycle_directive = (
+                f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
+                "Start your reply in Hinglish by welcoming them back warmly: 'Welcome back to Juvelle! Kaise help karoon?' before answering."
             )
         else:
             lifecycle_directive = (
@@ -383,19 +487,35 @@ def generate_live_neural_reply(
     if any(w in cleaned_lower for w in ["cash", "money", "loan", "borrow", "fund"]):
         if detected_lang == "english":
             return "I am Juvelle's fashion assistant and can only help you with our daily and office wear Churidar tops! How can I help you today?"
+        elif detected_lang == "hinglish":
+            return "Main Juvelle ka fashion assistant hoon aur sirf daily and office wear Churidar tops purchase karne mein help kar sakta hoon!"
         return "Njan Juvelle fashion assistant aanu, Churidar tops purchase cheyyan mathre help cheyyan pattu. Collections kaanikkatte?"
 
     if state == "first_contact" and is_greeting_only:
         if detected_lang == "english":
             return "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
+        elif detected_lang == "hinglish":
+            return "Hey there! Welcome to Juvelle. Hum daily aur office wear Churidar tops mein specialize karte hain. Kaise help karoon?"
+        elif detected_lang == "hindi_script":
+            return "नमस्ते! Juvelle में आपका स्वागत है। हम डेली और ऑफिस वियर चूड़ीदार टॉप्स में स्पेशलाइज करते हैं। मैं आपकी क्या मदद कर सकता हूँ?"
+        elif detected_lang == "tanglish":
+            return "Hey there! Welcome to Juvelle. Nanga daily and office wear Churidar topsla specialize panrom. Eppadi help panradhu?"
         return "Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?"
     elif state == "returning_session" and is_greeting_only:
         if detected_lang == "english":
             return "Welcome back to Juvelle! How can I assist you today?"
+        elif detected_lang == "hinglish":
+            return "Welcome back to Juvelle! Kaise help karoon?"
         return "Welcome back to Juvelle! Enganeya help cheyyendath?"
     
     if detected_lang == "english":
         return "We specialize exclusively in women's Churidar tops (₹399–₹899). How can I help you with our collection today?"
+    elif detected_lang == "hinglish":
+        return "Hum exclusively women's Churidar tops (₹399–₹899) offer karte hain. Kaise help karoon?"
+    elif detected_lang == "hindi_script":
+        return "हम मुख्य रूप से विमेंस चूड़ीदार टॉप्स (₹399–₹899) में डील करते हैं। बताइए क्या सहायता चाहिए?"
+    elif detected_lang == "tanglish":
+        return "Nanga exclusively women's Churidar tops (₹399–₹899) specialize panrom. Eppadi help panradhu?"
     return "Nammal women's Churidar topsil (₹399–₹899) aanu specialize cheyyunnath. Enganeya help cheyyendath?"
 
 def generate_juvelle_response(
