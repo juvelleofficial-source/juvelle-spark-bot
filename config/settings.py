@@ -20,7 +20,7 @@ _load_env()
 class Settings(BaseModel):
     # Application Config
     APP_NAME: str = "Gemini-Spark-Juvelle-Bot"
-    APP_VERSION: str = "2.0.0"
+    APP_VERSION: str = "2.2.0"
     DEBUG: bool = True
     PORT: int = int(os.getenv("PORT", "8000"))
     HOST: str = os.getenv("HOST", "0.0.0.0")
