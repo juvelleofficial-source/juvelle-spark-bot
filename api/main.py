@@ -315,11 +315,10 @@ async def live_call_websocket_endpoint(websocket: WebSocket, session_id: str):
                         break
                     elif action == "ping":
                         await session.send_event("pong", {})
-                    elif action == "user_text":
-                        # Support hybrid text prompt inside live call
+                    elif action in ("user_text", "speech", "say"):
                         text_msg = payload.get("text", "")
                         if text_msg:
-                            await session.handle_user_audio(text_msg.encode('utf-8'), mime_type="text/plain")
+                            await session.handle_user_text(text_msg)
                 except Exception as ex:
                     logger.debug(f"Live call frame parsing notice: {ex}")
     except WebSocketDisconnect:

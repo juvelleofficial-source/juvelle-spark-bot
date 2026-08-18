@@ -339,9 +339,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // --- Toast Notification Helper ---
+    function showToast(message, isError = true, duration = 6000) {
+        const toast = document.getElementById('toastNotification');
+        const toastText = document.getElementById('toastText');
+        const toastIcon = document.getElementById('toastIcon');
+        const toastClose = document.getElementById('toastCloseBtn');
+        if (!toast || !toastText) return;
+
+        toastText.innerText = message;
+        if (isError) {
+            toast.classList.remove('success-toast');
+            if (toastIcon) toastIcon.className = 'fa-solid fa-circle-exclamation toast-icon';
+        } else {
+            toast.classList.add('success-toast');
+            if (toastIcon) toastIcon.className = 'fa-solid fa-circle-check toast-icon';
+        }
+        toast.classList.remove('hidden');
+
+        if (toastClose) {
+            toastClose.onclick = () => toast.classList.add('hidden');
+        }
+        setTimeout(() => {
+            toast.classList.add('hidden');
+        }, duration);
+    }
+
     // --- Voice Recording ---
     async function startRecording() {
         try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                showToast("Microphone not supported in this browser. Please allow microphone permissions or use Chrome/Edge.", true);
+                return;
+            }
+
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             mediaRecorder = new MediaRecorder(stream);
             audioChunks = [];
@@ -368,8 +399,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }, 1000);
 
         } catch (err) {
-            console.error("Mic Error:", err);
-            alert("Could not access microphone.");
+            console.warn("Mic Error:", err);
+            voiceOverlay.classList.add('hidden');
+            showToast("🎙️ Mic permission needed. Click the lock/mic icon in the address bar to Allow Microphone.", true, 7000);
         }
     }
 
@@ -455,6 +487,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             this.callMuteBtn = document.getElementById('callMuteBtn');
             this.callEndBtn = document.getElementById('callEndBtn');
             this.callSpeakerBtn = document.getElementById('callSpeakerBtn');
+            this.callSpeechInput = document.getElementById('callSpeechInput');
+            this.callSpeechSendBtn = document.getElementById('callSpeechSendBtn');
 
             this.ws = null;
             this.stream = null;
@@ -477,6 +511,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (this.callMuteBtn) {
                 this.callMuteBtn.addEventListener('click', () => this.toggleMute());
             }
+            if (this.callSpeechSendBtn && this.callSpeechInput) {
+                this.callSpeechSendBtn.addEventListener('click', () => this.sendInCallSpeech());
+                this.callSpeechInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendInCallSpeech();
+                });
+            }
+        }
+
+        sendInCallSpeech() {
+            if (!this.callSpeechInput) return;
+            const text = this.callSpeechInput.value.trim();
+            if (!text) return;
+            this.callSpeechInput.value = '';
+
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.callCaptionText.innerText = `You: "${text}"`;
+                this.callStatusText.innerText = "Juvelle is thinking...";
+                this.ws.send(JSON.stringify({ action: "speech", text: text }));
+            } else {
+                showToast("Live call is connecting...", false);
+            }
         }
 
         async startLiveCall() {
@@ -486,19 +541,30 @@ document.addEventListener('DOMContentLoaded', async () => {
             this.callCaptionText.innerText = "Connecting live audio bridge...";
             this.callTimer.classList.add('hidden');
 
+            // 1. Attempt microphone access (gracefully fallback if denied)
+            let micGranted = false;
             try {
-                // 1. Request microphone access
-                this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    micGranted = true;
+                }
+            } catch (err) {
+                console.warn("Live Call Microphone access:", err);
+                showToast("🎙️ Mic permission not granted. Switched to Interactive Live Call Mode.", false, 7000);
+            }
 
-                // 2. Connect WebSocket
+            // 2. Connect WebSocket
+            try {
                 const wsUrl = `ws://127.0.0.1:8000/api/live-call/${currentSessionId}`;
                 this.ws = new WebSocket(wsUrl);
 
                 this.ws.onopen = () => {
                     console.log("Live Call WebSocket connected");
-                    this.callStatusText.innerText = "Connected • Juvelle AI Live";
+                    this.callStatusText.innerText = micGranted ? "Connected • Juvelle AI Live" : "Interactive Live Call (Audio Active)";
                     this.startCallTimer();
-                    this.startAudioStreaming();
+                    if (micGranted && this.stream) {
+                        this.startAudioStreaming();
+                    }
                 };
 
                 this.ws.onmessage = (event) => {
@@ -522,7 +588,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             } catch (err) {
                 console.error("Microphone / Call Error:", err);
-                alert("Could not access microphone for live calling.");
+                showToast("Could not connect to live audio call.", true);
                 this.endLiveCall();
             }
         }
@@ -530,7 +596,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         startAudioStreaming() {
             if (!this.stream || !this.ws) return;
 
-            this.callRecorder = new MediaRecorder(this.stream, { mimeType: 'audio/webm' });
+            try {
+                this.callRecorder = new MediaRecorder(this.stream, { mimeType: 'audio/webm' });
+            } catch (e) {
+                this.callRecorder = new MediaRecorder(this.stream);
+            }
+
             this.callRecorder.ondataavailable = (e) => {
                 if (e.data && e.data.size > 0 && this.ws && this.ws.readyState === WebSocket.OPEN && !this.isMuted) {
                     this.ws.send(e.data);
@@ -573,9 +644,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (this.isMuted) {
                 this.callMuteBtn.classList.add('active-muted');
                 this.callMuteBtn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
+                showToast("Microphone Muted", false, 2000);
             } else {
                 this.callMuteBtn.classList.remove('active-muted');
                 this.callMuteBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+                showToast("Microphone Unmuted", false, 2000);
             }
         }
 

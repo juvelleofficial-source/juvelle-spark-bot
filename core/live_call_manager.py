@@ -33,8 +33,45 @@ class LiveCallSession:
         }
         await self.websocket.send_text(json.dumps(payload))
 
+    async def handle_user_text(self, text: str):
+        """Processes an incoming text-simulated speech turn during a live call."""
+        if not text or not text.strip():
+            return
+        self.turn_count += 1
+        lang = detect_query_language(text)
+        self.preferred_language = lang
+
+        # 1. Emit user caption
+        await self.send_event("user_speech", {
+            "transcript": text.strip(),
+            "language": lang
+        })
+
+        # 2. Generate conversational AI reply with RAG
+        await self.send_event("status", {"state": "speaking", "message": "Juvelle is replying..."})
+        reply_text = generate_juvelle_reply(
+            customer_message=text.strip(),
+            session_id=self.session_id
+        )
+
+        # 3. Generate TTS audio for live playback
+        audio_b64 = generate_tts_base64(reply_text, language=lang)
+
+        # 4. Send bot speech and audio payload
+        await self.send_event("bot_speech", {
+            "text": reply_text,
+            "audio_data": audio_b64,
+            "language": lang
+        })
+        
+        await self.send_event("status", {"state": "active", "message": "Call active"})
+
     async def handle_user_audio(self, audio_bytes: bytes, mime_type: str = "audio/webm"):
         """Processes an incoming live voice segment from the caller."""
+        if mime_type.startswith("text/"):
+            await self.handle_user_text(audio_bytes.decode('utf-8', errors='ignore'))
+            return
+
         self.turn_count += 1
         
         # 1. Transcribe speech

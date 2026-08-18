@@ -161,6 +161,12 @@
                     <div class="caption-label"><i class="fa-solid fa-closed-captioning"></i> Live Subtitles</div>
                     <div class="caption-content" id="callCaptionText">Connecting to Juvelle Live Assistant...</div>
                 </div>
+
+                <!-- In-Call Quick Speech Bar (For Testing with or without Mic) -->
+                <div class="call-quick-speech" id="callQuickSpeech">
+                    <input type="text" id="callSpeechInput" class="call-speech-input" placeholder="Say something (or type in call)..." autocomplete="off">
+                    <button id="callSpeechSendBtn" class="call-speech-btn">Speak</button>
+                </div>
             </div>
             <div class="call-bottom-controls">
                 <button class="call-ctrl-btn" id="callMuteBtn" title="Mute Microphone">
@@ -173,6 +179,13 @@
                     <i class="fa-solid fa-volume-high"></i>
                 </button>
             </div>
+        </div>
+
+        <!-- In-App Notification Toast -->
+        <div class="toast-notification hidden" id="toastNotification">
+            <i class="fa-solid fa-circle-exclamation toast-icon" id="toastIcon"></i>
+            <div class="toast-text" id="toastText">Microphone access needed. Click the lock icon in the address bar to allow.</div>
+            <button class="toast-close" id="toastCloseBtn">&times;</button>
         </div>
     </div>
 
