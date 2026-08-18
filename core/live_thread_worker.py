@@ -16,6 +16,7 @@ _RUNNING = False
 async def live_instagram_poll_worker(poll_interval: float = 0.5):
     """
     Ultra-Fast 24/7 autonomous background worker (500ms polling).
+    Zero static answers. Pure Gemini AI dynamic reasoning.
     Handles text DMs, Voice Notes, and Audio Attachments on Instagram.
     Transcribes audio using Gemini Multimodal LLM and dispatches instant brand replies.
     """
@@ -85,21 +86,21 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
                                     break
                                     
                             if is_audio and audio_url:
-                                logger.info(f"[AUTONOMOUS BOT] Detected Voice Note from @{sender_username} ({sender_id}). Downloading audio...")
-                                audio_bytes = await asyncio.to_thread(download_audio_bytes, audio_url)
-                                if audio_bytes:
-                                    logger.info(f"[AUTONOMOUS BOT] Ingesting {len(audio_bytes)} bytes audio into Gemini Multimodal...")
-                                    text = await asyncio.to_thread(transcribe_and_understand_voice_note, audio_bytes)
-                                    logger.info(f"[AUTONOMOUS BOT] Voice Note transcribed to: '{text}'")
+                                logger.info(f"[AUTONOMOUS BOT] Detected Audio Attachment from @{sender_username}. Downloading...")
+                                audio_res = await asyncio.to_thread(download_audio_bytes, audio_url)
+                                if audio_res:
+                                    audio_bytes, mime = audio_res
+                                    logger.info(f"[AUTONOMOUS BOT] Decoding audio ({mime}, {len(audio_bytes)} bytes) with Gemini 2.0 Flash...")
+                                    text = await asyncio.to_thread(transcribe_and_understand_voice_note, audio_bytes, mime)
+                                    logger.info(f"[AUTONOMOUS BOT] Transcribed voice message: '{text}'")
                             elif not text and text == "":
-                                # In Graph API, voice clips without direct attachment URL are marked with empty message string
-                                logger.info(f"[AUTONOMOUS BOT] Detected Voice Note / Audio Clip event from @{sender_username} ({sender_id})!")
-                                text = "Customer sent an Instagram voice message inquiry asking about Juvelle Churidar collections."
+                                logger.info(f"[AUTONOMOUS BOT] Detected Voice Note event from @{sender_username} ({sender_id}). Generating dynamic AI context response...")
+                                text = "Customer sent an Instagram voice message inquiry."
                                 
                             if text:
-                                logger.info(f"[AUTONOMOUS BOT] Processing customer message from @{sender_username}: '{text}'")
+                                logger.info(f"[AUTONOMOUS BOT] Running Gemini AI dynamic reasoning for @{sender_username}: '{text}'")
                                 
-                                # Generate AI response
+                                # Pure Dynamic AI response from Gemini Spark Agent + Qdrant RAG + Session Memory
                                 reply = generate_juvelle_reply(
                                     customer_message=text,
                                     session_id=sender_id or "customer_01",
@@ -122,5 +123,5 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-    print("Starting Ultra-Fast Autonomous Live Thread Worker (500ms polling + Voice Note perception)...")
+    print("Starting Ultra-Fast Autonomous Live Thread Worker (500ms polling + Gemini Multimodal Voice perception)...")
     asyncio.run(live_instagram_poll_worker(poll_interval=0.5))
