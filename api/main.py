@@ -46,16 +46,38 @@ app.add_middleware(
 # Include Gemini Spark MCP & Meta Webhook Router
 app.include_router(mcp_router)
 
+import asyncio
+import httpx
+
+async def keep_alive_background_worker():
+    """Periodically pings public URL every 10 minutes to prevent Render free-tier idle sleep."""
+    await asyncio.sleep(30)
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://juvelle-spark-bot.onrender.com")
+    health_endpoint = f"{render_url.rstrip('/')}/api/health"
+    
+    while True:
+        try:
+            await asyncio.sleep(600)  # 10 minutes
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.get(health_endpoint)
+                logger.info(f"Keep-alive self ping to {health_endpoint} [status: {resp.status_code}]")
+        except Exception as e:
+            logger.debug(f"Keep-alive ping notice: {e}")
+
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     """
-    Runs initial ingestion on startup to populate the local vector store.
+    Runs initial ingestion on startup to populate vector store and starts keep-alive worker.
     """
     logger.info("Application starting up... running initial ingestion job.")
     try:
         run_ingestion_pipeline()
     except Exception as e:
         logger.error(f"Startup ingestion failed: {e}")
+        
+    # Start 24/7 keep-alive worker
+    asyncio.create_task(keep_alive_background_worker())
+
 
 @app.get("/api/health")
 def health_check():
