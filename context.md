@@ -1,11 +1,11 @@
 # Comprehensive System Context & Architectural Blueprint
 
 ## 1. Project Overview & Core Philosophy
-This project implements an enterprise-grade, 100% free **Model Context Protocol (MCP) Bridge & Autonomous AI Agent System** connecting **Google Gemini Spark** with **Facebook Developer (Meta Graph API)**, **WhatsApp Business API**, **Pinecone Cloud Vector Database**, and a local **Instagram DM Simulator / Tester**.
+This project implements a production-grade, 100% free **Model Context Protocol (MCP) Bridge, Autonomous AI Agent & Customer CRM System** connecting **Google Gemini Spark** (`gemini.google.com`) with **Facebook Developer (Meta Graph API)**, **WhatsApp Business API**, **Qdrant Cloud Vector Database (AWS)**, and a live **Instagram DM Simulator / Tester**.
 
 ### 1.1 The "Zero Gemini API Key" Paradigm
-- **Standard Gemini API**: Requires an API key from Google AI Studio, pay-per-token pricing, billing setups, and rate limits.
-- **Google Gemini Spark**: Google's autonomous background agent operating at `gemini.google.com`. Google provides the reasoning compute natively within the web environment for free.
+- **Standard Gemini API**: Requires an API key from Google AI Studio, pay-per-token pricing, and quota limits.
+- **Google Gemini Spark**: Google's autonomous background agent operating directly at `gemini.google.com`. Google provides 100% of the LLM compute, reasoning, and response generation natively within Google's cloud for free.
 - **The MCP Bridge**: By registering a custom MCP Server endpoint in Gemini Spark (`Settings -> Connected Apps -> Custom apps for Spark`), Gemini Spark acts as the autonomous intelligence layer that drives external applications, Meta messaging, and document querying without consuming user API credits.
 
 ---
@@ -21,27 +21,27 @@ This project implements an enterprise-grade, 100% free **Model Context Protocol 
                                           | Webhooks (POST /webhook/facebook & /webhook/instagram-test)
                                           v
 +-----------------------------------------------------------------------------------+
-|                      FREE CLOUD FASTAPI MCP & RAG SERVER                          |
+|                   24/7 CLOUD FASTAPI MCP & RAG SERVER (Render / Railway)          |
 |                                                                                   |
 |  +---------------------------+       +-----------------------------------------+  |
 |  |  Meta Webhook Controller  | ----> |  SQLite Message Queue (mcp_inbox.db)    |  |
 |  +---------------------------+       +-----------------------------------------+  |
 |                                                           ^                       |
 |  +---------------------------+                            | Pulls & Updates       |
-|  |  Juvelle Agent Engine     |                            v                       |
-|  |  (Instagram DM Persona)   | <---> +-----------------------------------------+  |
+|  |  Session Lifecycle Engine |                            v                       |
+|  |  (3-Hour Shopping Window) | <---> +-----------------------------------------+  |
 |  +---------------------------+       |     MCP Protocol Engine (FastAPI)       |  |
 |         |                            |  - GET  /mcp/sse                        |  |
 |         v                            |  - POST /mcp/messages                   |  |
 |  +---------------------------+       +-----------------------------------------+  |
-|  | Pinecone Vector Database  |                            |                       |
-|  | (gemini-memory 768-dim)   |                            v                       |
+|  |  Customer CRM Profiler    |                            |                       |
+|  |  (Sizes, Fabrics, Stage)  |                            v                       |
 |  +---------------------------+       +-----------------------------------------+  |
 |         |                            |  Meta Graph API Dispatcher              |  |
 |         v                            |  (graph.facebook.com/v19.0)             |  |
 |  +---------------------------+       +-----------------------------------------+  |
-|  | Local Zero-Cost Hybrid RAG|                                                    |
-|  | (BM25 + Cosine + RRF)     |                                                    |
+|  | Qdrant Cloud Vector DB    |                                                    |
+|  | (juvelle_knowledge 768-dim|                                                    |
 |  +---------------------------+                                                    |
 +-----------------------------------------+-----------------------------------------+
                                           ^
@@ -53,7 +53,7 @@ This project implements an enterprise-grade, 100% free **Model Context Protocol 
 |                                                                                   |
 |  1. Discovers tools via MCP Tools Manifest                                        |
 |  2. Calls `get_pending_facebook_messages` to check inbox                          |
-|  3. Calls `search_knowledge_base` to retrieve grounded RAG facts                  |
+|  3. Calls `search_knowledge_base` to retrieve grounded RAG facts from Qdrant Cloud |
 |  4. Autonomously formulates human-like grounded responses                         |
 |  5. Calls `send_facebook_reply` to dispatch the reply via Meta Graph API           |
 |  6. Calls `save_customer_note` to update long-term CRM memory                     |
@@ -62,184 +62,101 @@ This project implements an enterprise-grade, 100% free **Model Context Protocol 
 
 ---
 
-## 3. Vector Database & Knowledge Retrieval (Pinecone RAG)
+## 3. Vector Database & Knowledge Retrieval (Qdrant Cloud RAG)
 
-### 3.1 Pinecone Cloud Integration
-- **Index Name**: `gemini-memory`
-- **Host Endpoint**: `https://gemini-memory-4gbye74.svc.aped-4627-b74a.pinecone.io`
-- **Vector Dimension**: `768` floats (Dense, on-demand, AWS `us-east-1`)
-- **Authentication**: `Api-Key` HTTP Header authentication
-- **Client Implementation**: `retrieval/pinecone_client.py`
+### 3.1 Qdrant Cloud Permanent Free Tier
+- **Provider**: Qdrant Cloud on AWS (`aws.cloud.qdrant.io`)
+- **Collection Name**: `juvelle_knowledge`
+- **Cluster Endpoint**: `https://3c502767-14fe-4ed6-81ef-613b5965d897.us-east-1-1.aws.cloud.qdrant.io`
+- **Vector Dimension**: `768` dimensions, `Distance.COSINE`
+- **Client**: `qdrant-client` (Async & Sync support)
+- **Local Fallback**: In-memory dense cosine similarity + BM25 keyword matching via Reciprocal Rank Fusion (RRF).
 
-### 3.2 Juvelle Brand Knowledge Base (Seeded Vectors)
+### 3.2 Seeded Juvelle Brand Knowledge Base
 1. **`juvelle_brand_core`**: Premium daily & office wear Churidar tops (Price range ₹399 - ₹899).
-2. **`juvelle_delivery_shipping`**: Exclusive delivery to **Kerala ONLY** via Delhivery courier service (dispatched next working day). Politely declines outside orders (Bangalore, Mumbai, Dubai, etc.).
-3. **`juvelle_payment_policy`**: Online payment only (UPI / GPay / PhonePe / Paytm / Bank Transfer). NO Cash on Delivery (COD) to ensure faster next-day dispatch.
+2. **`juvelle_delivery_shipping`**: Exclusive delivery to **Kerala ONLY** via Delhivery courier service (2-3 business days, ₹50 standard shipping). Politely declines outside orders (Bangalore, Mumbai, Dubai, etc.).
+3. **`juvelle_payment_policy`**: Online payment only (UPI / GPay / PhonePe / Paytm / Bank Transfer). NO Cash on Delivery (COD).
 4. **`juvelle_ordering_process`**: Simple 3-step ordering process (Screenshot + Size in DM -> Availability & Payment Confirmation -> Next-day dispatch).
-5. **`juvelle_product_catalog`**: Breathable cotton and premium rayon blends tailored for all-day comfort.
+5. **`juvelle_product_catalog`**: Breathable cotton and premium soft rayon blends.
 
 ---
 
-## 4. Juvelle AI Customer Service Agent (`core/juvelle_agent.py`)
+## 4. Session Lifecycle & Anti-Repetitive Greeting Engine
 
-- **Persona**: "Juvelle Support" — warm, polite, helpful, quietly confident, speaking like a high-end boutique owner.
-- **Tone & Formatting**: 2-3 short sentences, gentle emojis (`✨`, `🌸`, `🧵`, `📦`), never aggressive or pushy.
-- **Dynamic Memory**: Tracks session dialogue turns using `memory.short_term_memory` and synchronizes to local SQLite storage.
-- **Response Format**: Outputs structured array of messages matching Instagram DM bubble splitting.
-
----
-
-## 5. Instagram Tester & Simulation Protocol
-
-- **Tester Location**: `C:\Users\sahil\antigravity\instagram_tester`
-- **Config**: `C:\Users\sahil\antigravity\instagram_tester\config.json`
-- **Webhook Endpoint**: `POST http://127.0.0.1:8000/webhook/instagram-test`
-- **Supported Test Scenarios**:
-  1. *Greeting & Catalog*: "Hi, what tops do you have?"
-  2. *Territory Restriction*: "Can you ship to Bangalore?"
-  3. *Payment & COD Policy*: "Do you have COD?"
-  4. *Order Placement Workflow*: "How do I order this top?"
-  5. *Pricing & Availability*: "What is the price of your tops?"
-  6. *Website Query*: "What is your website link?"
+### 4.1 3-Hour Active Shopping Window (10,800s)
+- **Turn 1 (First Contact)**:
+  - Delivers a warm brand welcome (*"Hey there! Welcome to Juvelle 🌸 We specialize in daily and office wear Churidar tops. How can I help you today? ✨"*).
+- **Active Dialogue (< 3 Hours Inactivity)**:
+  - Customers frequently take 1–2 hours to ask parents or deliberate on sizing.
+  - **Zero Repeated Greetings**: The bot jumps straight into answering queries without re-introducing the company.
+- **Mid-Conversation "Hi/Hey"**:
+  - Natural human acknowledgment (*"Hey! Yes, tell me? ✨"*) without restarting the brand intro.
+- **Returning Customer (> 3 Hours Inactivity)**:
+  - Warm re-engagement greeting (*"Hey again! Welcome back to Juvelle ✨"*), referencing saved size preferences if known.
 
 ---
 
-## 6. Model Context Protocol (MCP) Server Specifications
+## 5. Customer CRM Profiling & Filter REST APIs
 
-### 6.1 Protocol Endpoints
-- **SSE Stream Endpoint**: `GET /mcp/sse`
-  - Purpose: Provides the initial handshake for Gemini Spark and streams server-sent events for keep-alive ping heartbeats.
-  - Initial Event: `event: endpoint \n data: /mcp/messages`
-- **JSON-RPC Handler**: `POST /mcp/messages`
-  - Standard JSON-RPC 2.0 protocol handler.
-  - Supports methods: `initialize`, `tools/list`, `tools/call`, `ping`, and `notifications/initialized`.
+### 5.1 Automated Entity & Intent Extraction
+- **Sizes**: `XS`, `S`, `M`, `L`, `XL`, `XXL`, `3XL`
+- **Fabrics**: `Cotton`, `Rayon`, `Linen`, `Silk`
+- **Kerala Locations**: `Kochi`, `Calicut`, `Trivandrum`, `Thrissur`, `Kannur`, etc.
+- **Lifecycle Stages**: `New Lead`, `Browsing`, `Ready to Order`, `Existing Customer`, `Support`
 
-### 6.2 Exposed MCP Tools Manifest
-
-#### `get_pending_facebook_messages`
-- **Description**: Retrieves pending customer inquiries received from Facebook Messenger, WhatsApp, or Instagram via Webhooks.
-- **Parameters**: `limit` (integer, optional, default: 5).
-
-#### `search_knowledge_base`
-- **Description**: Performs a hybrid semantic vector search (Pinecone / Local) and lexical search across internal enterprise documents.
-- **Parameters**: `query` (string, required), `top_k` (integer, optional, default: 3).
-
-#### `send_facebook_reply`
-- **Description**: Dispatches the AI-generated reply back to the customer via Meta Graph API and marks the message as resolved.
-- **Parameters**: `message_id` (string, required), `recipient_id` (string, required), `reply_text` (string, required).
-
-#### `save_customer_note`
-- **Description**: Persists customer preferences or CRM details into long-term SQLite memory.
-- **Parameters**: `sender_id` (string, required), `customer_name` (string, optional), `notes` (string, required).
+### 5.2 CRM REST Endpoints
+- `GET /api/crm/customers`: Filter by stage, preferred size, or location.
+- `GET /api/crm/customers/{user_id}`: Full customer dossier and past dialogue turns.
+- `GET /api/crm/stats`: Real-time stage distribution and size analytics.
+- `POST /api/crm/customers/{user_id}/tag`: Add custom tags and CRM sales notes.
 
 ---
 
-## 7. Meta Developer Integration
+## 6. Manglish Natural Language Formatting & Sanitizer
 
-### 7.1 Webhook Handshake (`GET /webhook/facebook`)
-- Meta sends a verification request with query parameters: `hub.mode`, `hub.verify_token`, and `hub.challenge`.
-- The server validates `hub.verify_token == META_VERIFY_TOKEN` and responds with the raw `hub.challenge` string.
-
-### 7.2 Incoming Event Ingestion (`POST /webhook/facebook`)
-- Handles incoming `page` (Messenger / Instagram) and `whatsapp_business_account` events.
-- Extracts `sender.id` and `message.text`, automatically queuing them into `mcp_inbox.db`.
-
-### 7.3 Outbound Message Dispatch (`meta_client.py`)
-- Sends POST requests to `https://graph.facebook.com/v19.0/me/messages` using `META_PAGE_ACCESS_TOKEN`.
-- Includes automated mock/simulation mode for offline local development when tokens are not yet configured.
+1. **Pure Script Purity**: Prevents Malayalam Unicode bleeding (`\u0D00-\u0D7F`) into Latin characters.
+2. **Zero Hyphens (`-`)**: Eliminates unnatural machine hyphens (e.g. transforms `Juvelle-te` $\rightarrow$ `Juvelle inte`, `Kerala-il` $\rightarrow$ `Kerala yil`, `delivery-kku` $\rightarrow$ `deliverykku`).
+3. **Possessive Suffix**: Enforces `inte` over `-te`.
+4. **Active Candidate Cascade**: `gemini-flash-lite-latest` $\rightarrow$ `gemini-3.5-flash-lite` $\rightarrow$ `gemini-3.6-flash` $\rightarrow$ `gemini-3.5-flash`.
 
 ---
 
-## 8. Multi-Tier Memory Engine
+## 7. Model Context Protocol (MCP) Server Specifications
 
-### 8.1 Short-Term Memory Buffer
-- In-memory sliding window holding recent conversation turns (`memory/short_term_memory.py`).
-- Enforces strict token limit boundaries to prevent context overflow.
+### 7.1 Protocol Endpoints
+- **SSE Stream Endpoint**: `GET /mcp/sse` (Handshake + discovery + 15s keep-alive).
+- **JSON-RPC Handler**: `POST /mcp/messages` & `POST /mcp/sse` (Streamable HTTP).
+- **OAuth Discovery**: `GET /.well-known/oauth-protected-resource`.
 
-### 8.2 Long-Term Persistent Memory
-- Backed by SQLite database (`data/memory.db`).
-- Stores historical conversation turns, user entity profiles, and CRM notes (`memory/long_term_memory.py`).
-
-### 8.3 Episodic Memory Consolidation
-- Summarizes multi-turn sessions into concise user preference vectors (`memory/spark_memory_consolidator.py`).
-
----
-
-## 9. 100% Free Cloud Deployment Blueprint
-
-| Platform | Free Tier Resource | Purpose | Configuration |
-| :--- | :--- | :--- | :--- |
-| **Pinecone Serverless** | 1 Index, 2GB Storage, 100K queries/mo | Production Vector Database | `gemini-memory` (768-dim) |
-| **Hugging Face Spaces** | 2 vCPU, 16 GB RAM, Unlimited time | Full MCP Server + FastAPI | `Dockerfile` (Port 7860 / 8000) |
-| **Render.com** | 512 MB RAM, 750 free hours/month | Standby MCP API Server | `Dockerfile` / Web Service |
-| **Vercel** | 100 GB Bandwidth, Edge Functions | Frontend UI + Static Hosting | `vercel.json` |
-| **Google Gemini Spark** | Free on `gemini.google.com` | Autonomous AI Reasoning & Tool Execution | Connected Apps (MCP URL) |
+### 7.2 Exposed MCP Tools Manifest
+1. `get_pending_facebook_messages`: Fetches unreplied customer inquiries from SQLite queue.
+2. `search_knowledge_base`: Dense Qdrant Cloud cosine + BM25 keyword hybrid search.
+3. `send_facebook_reply`: Dispatches response via Meta Graph API v19.0.
+4. `save_customer_note`: Persists customer preferences into long-term CRM memory.
 
 ---
 
-## 10. Project Directory Structure
+## 8. 1-Click 24/7 Pure Cloud Deployment Suite
 
-```
-Gemini Spark Chat Bot/
-├── api/
-│   ├── main.py                  # FastAPI entrypoint (Web App + MCP router + Instagram Webhooks)
-│   └── schemas.py               # Pydantic request/response schemas
-├── config/
-│   └── settings.py              # Environment variables & runtime configurations
-├── core/
-│   ├── failover_client.py       # Multi-model zero-cost failover engine
-│   ├── juvelle_agent.py         # Juvelle Customer Support Agent & Instagram persona engine
-│   ├── orchestrator.py          # Grounded RAG chat orchestrator
-│   └── router.py                # Complexity query classifier
-├── data/
-│   ├── sample_docs.json         # Enterprise knowledge base documents
-│   ├── mcp_inbox.db             # SQLite inbox for incoming Meta messages
-│   └── memory.db                # SQLite long-term user memory
-├── frontend/
-│   ├── app.js                   # Glassmorphic UI logic & SSE chat client
-│   ├── index.html               # Web UI interface
-│   └── style.css                # Premium styling & dark mode tokens
-├── ingestion/
-│   ├── batch_embedder.py        # Dense vector embedding generator
-│   ├── chunker.py               # Semantic document chunker
-│   ├── ingestion_job.py         # Distributed document ingestion pipeline
-│   ├── spark_session.py         # Zero-cost distributed Spark emulator
-│   └── vector_indexer.py        # Vector index synchronization & storage
-├── mcp_server/
-│   ├── __init__.py              # MCP server package exports
-│   ├── message_queue.py         # Meta inbox queue & CRM persistence
-│   ├── meta_client.py           # Meta Graph API v19.0 client & simulator
-│   ├── server.py                # Standard MCP SSE + JSON-RPC protocol server
-│   └── tools_registry.py        # Tool schemas & execution handlers
-├── memory/
-│   ├── long_term_memory.py      # SQLite persistent memory store
-│   ├── short_term_memory.py     # In-memory sliding context window
-│   └── spark_memory_consolidator.py # Episodic memory consolidation
-├── retrieval/
-│   ├── hybrid_ranker.py         # Reciprocal Rank Fusion (RRF) algorithm
-│   ├── pinecone_client.py       # Pinecone Cloud Vector REST client (gemini-memory)
-│   └── vector_retriever.py      # Dense + lexical hybrid search engine
-├── tests/
-│   ├── test_mcp_server.py       # MCP & Meta Webhook automated tests (4 tests)
-│   └── test_system.py           # Core system unit tests (7 tests)
-├── .env.example                 # Sample configuration template
-├── context.md                   # Complete architectural system context
-├── Dockerfile                   # 16GB Container deployment manifest
-├── requirements.txt             # Python project dependencies
-└── vercel.json                  # Vercel serverless deployment config
-```
+| File | Platform / Target | Purpose |
+| :--- | :--- | :--- |
+| **`render.yaml`** | Render.com | 1-Click Blueprint for 100% Free Web Service with permanent HTTPS |
+| **`railway.toml`** | Railway.app | Native Railway container deployment specification |
+| **`Dockerfile`** | HF Spaces / Cloud Run | Universal Python 3.11 container with dynamic `$PORT` binding |
+| **`DEPLOYMENT_GUIDE.md`** | Multi-Cloud | Visual step-by-step 1-click cloud deployment guide |
+| **`.gitignore`** | Git / GitHub | Strictly excludes `.env`, secrets, local binaries, and logs |
 
 ---
 
-## 11. Automated Testing & Verification Commands
+## 9. Automated Testing & Verification Commands
 
 ```bash
-# Run MCP & Meta Webhook tests:
-python -m unittest tests.test_mcp_server
+# Test Session Lifecycle, Anti-Repetitive Greetings, Concurrency & CRM:
+python scratch/test_session_and_crm.py
 
-# Run core RAG & memory system tests:
-python -m unittest tests.test_system
+# Test Live HTTP Endpoints on Running Server:
+python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/api/health').read().decode())"
 
-# Seed and verify Pinecone vector knowledge:
-python -c "from retrieval.pinecone_client import seed_juvelle_knowledge_to_pinecone; seed_juvelle_knowledge_to_pinecone()"
+# Synchronize all code and configs to OneDrive Cloud Backup:
+python scratch/sync_to_onedrive_backup.py
 ```
