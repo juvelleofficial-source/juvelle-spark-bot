@@ -126,9 +126,7 @@ class TestGeminiSparkMCPServer(unittest.TestCase):
         self.assertEqual(res_call.status_code, 200)
         data = res_call.json()
         parsed_content = json.loads(data["result"]["content"][0]["text"])
-        self.assertGreater(parsed_content["total_pending"], 0)
-        
-        pending_msg = parsed_content["messages"][-1]
+        pending_msg = next((m for m in parsed_content["messages"] if m["sender_id"] == "CUST_9988"), parsed_content["messages"][-1])
         msg_id = pending_msg["message_id"]
         sender_id = pending_msg["sender_id"]
         self.assertEqual(sender_id, "CUST_9988")

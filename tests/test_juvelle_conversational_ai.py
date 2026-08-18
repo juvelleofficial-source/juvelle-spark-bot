@@ -74,7 +74,7 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
         )
         self.assertTrue(msg_id.startswith("fb_"))
 
-        pending = execute_mcp_tool("get_pending_facebook_messages", {"limit": 5})
+        pending = execute_mcp_tool("get_pending_facebook_messages", {"limit": 50})
         messages = pending["messages"]
         self.assertTrue(any(m["sender_id"] == "spark_flow_test" for m in messages))
         target_msg = next(m for m in messages if m["sender_id"] == "spark_flow_test")
