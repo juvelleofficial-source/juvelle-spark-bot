@@ -368,19 +368,27 @@ def generate_live_neural_reply(
                 logger.warning(f"Model {model_name} attempt error: {e}")
                 continue
 
-    # Fallback based on session lifecycle & language
-    if state == "first_contact":
+    # Intelligent fallback handling based on query intent & language
+    cleaned_lower = chat_input.lower().strip()
+    is_greeting_only = cleaned_lower in GREETING_WORDS or len(cleaned_lower.split()) <= 2 and any(w in cleaned_lower for w in GREETING_WORDS)
+    
+    if any(w in cleaned_lower for w in ["cash", "money", "loan", "borrow", "fund"]):
+        if detected_lang == "english":
+            return "I am Juvelle's fashion assistant and can only help you with our daily and office wear Churidar tops! How can I help you today?"
+        return "Njan Juvelle fashion assistant aanu, Churidar tops purchase cheyyan mathre help cheyyan pattu. Collections kaanikkatte?"
+
+    if state == "first_contact" and is_greeting_only:
         if detected_lang == "english":
             return "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
         return "Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?"
-    elif state == "returning_session":
+    elif state == "returning_session" and is_greeting_only:
         if detected_lang == "english":
             return "Welcome back to Juvelle! How can I assist you today?"
         return "Welcome back to Juvelle! Enganeya help cheyyendath?"
     
     if detected_lang == "english":
-        return "Sure! How can I help you find something special today?"
-    return "Sure! Enganeya help cheyyendath?"
+        return "We specialize exclusively in women's Churidar tops (₹399–₹899). How can I help you with our collection today?"
+    return "Nammal women's Churidar topsil (₹399–₹899) aanu specialize cheyyunnath. Enganeya help cheyyendath?"
 
 def generate_juvelle_response(
     chat_input: str,
