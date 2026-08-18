@@ -315,6 +315,85 @@ async def process_and_reply_async(sender_id: str, message_text: str, platform: s
     except Exception as e:
         logger.error(f"[AUTONOMOUS WORKER] Error processing auto-reply for {sender_id}: {e}", exc_info=True)
 
+# Ring buffer for live webhook telemetry (in-memory + diagnostic)
+WEBHOOK_LOGS = []
+
+@mcp_router.get("/webhook_logs")
+def get_webhook_logs(limit: int = 50):
+    """Returns recent raw Meta Webhook incoming events for debugging."""
+    return JSONResponse({
+        "total_events": len(WEBHOOK_LOGS),
+        "events": WEBHOOK_LOGS[-limit:][::-1]
+    })
+
+@mcp_router.get("/webhook_logs/html", response_class=HTMLResponse)
+def get_webhook_logs_html():
+    """Visual real-time dashboard for inspecting incoming Meta Webhook events."""
+    import html
+    rows = ""
+    for ev in WEBHOOK_LOGS[::-1]:
+        ts = html.escape(str(ev.get("timestamp", "")))
+        obj = html.escape(str(ev.get("object", "")))
+        sender = html.escape(str(ev.get("sender_id", "N/A")))
+        text = html.escape(str(ev.get("text", "N/A")))
+        status = html.escape(str(ev.get("status", "")))
+        raw = html.escape(json.dumps(ev.get("raw_data", {}), indent=2))
+        rows += f"""
+        <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 10px; font-family: monospace; font-size: 12px;">{ts}</td>
+            <td style="padding: 10px; font-weight: bold; color: #3b82f6;">{obj}</td>
+            <td style="padding: 10px; font-family: monospace;">{sender}</td>
+            <td style="padding: 10px;">{text}</td>
+            <td style="padding: 10px;"><span style="background: #dcfce7; color: #166534; padding: 2px 8px; border-radius: 4px; font-size: 11px;">{status}</span></td>
+            <td style="padding: 10px;"><details><summary style="cursor: pointer; color: #64748b; font-size: 12px;">View Payload</summary><pre style="background: #f1f5f9; padding: 8px; font-size: 11px; border-radius: 4px; max-height: 150px; overflow: auto;">{raw}</pre></details></td>
+        </tr>
+        """
+    if not rows:
+        rows = '<tr><td colspan="6" style="padding: 20px; text-align: center; color: #94a3b8;">No incoming webhook events recorded yet. Send a DM to trigger an event!</td></tr>'
+
+    return f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta http-equiv="refresh" content="5">
+        <title>Juvelle Bot - Live Webhook Telemetry</title>
+        <style>
+            body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 24px; }}
+            .card {{ background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; overflow: hidden; }}
+            table {{ width: 100%; border-collapse: collapse; text-align: left; }}
+            th {{ background: #f1f5f9; padding: 12px 10px; font-size: 12px; text-transform: uppercase; color: #475569; }}
+        </style>
+    </head>
+    <body>
+        <div style="max-width: 1200px; margin: 0 auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h1 style="margin: 0; font-size: 20px;">⚡ Juvelle Bot - Live Meta Webhook Monitor</h1>
+                <span style="font-size: 12px; color: #64748b;">Auto-refreshing every 5s | Total Events: {len(WEBHOOK_LOGS)}</span>
+            </div>
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Object</th>
+                            <th>Sender ID</th>
+                            <th>Message Text</th>
+                            <th>Status</th>
+                            <th>Raw Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+
 
 @mcp_router.post("/webhook/facebook")
 @mcp_router.post("/webhook/instagram")
@@ -322,17 +401,26 @@ async def process_and_reply_async(sender_id: str, message_text: str, platform: s
 async def receive_facebook_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Receives incoming messaging events from Facebook Messenger, WhatsApp, or Instagram DMs.
-    Enqueues messages for audit and triggers autonomous real-time AI reply worker.
+    Enqueues messages for audit, logs telemetry, and triggers autonomous real-time AI reply worker.
     """
+    import datetime
     try:
         data = await request.json()
     except Exception:
         return JSONResponse({"status": "invalid_json"}, status_code=400)
 
-    logger.info(f"Incoming Meta Webhook event: {json.dumps(data)[:200]}...")
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    logger.info(f"Incoming Meta Webhook event: {json.dumps(data)}")
+
+    event_object = data.get("object", "unknown")
+    event_entry = {
+        "timestamp": now_iso,
+        "object": event_object,
+        "raw_data": data,
+        "status": "RECEIVED"
+    }
 
     # Parse standard Meta Instagram & Messenger event payload
-    event_object = data.get("object")
     if event_object in ["page", "instagram"]:
         platform_name = "instagram" if event_object == "instagram" else "messenger"
         for entry in data.get("entry", []):
@@ -344,9 +432,13 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
 
                 # Skip echo messages sent by the bot/page itself
                 if message.get("is_echo"):
+                    logger.info(f"Skipping echo message for {sender_id}")
                     continue
 
                 if sender_id and text:
+                    event_entry["sender_id"] = sender_id
+                    event_entry["text"] = text
+                    event_entry["status"] = "QUEUED_FOR_REPLY"
                     enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
@@ -355,7 +447,18 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     logger.info(f"Enqueued {platform_name} message from {sender_id}: '{text}'")
                     background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
-            # 2. Check changes array (alternative Instagram Graph Webhooks format)
+            # 2. Check standby array
+            for standby_event in entry.get("standby", []):
+                sender_id = standby_event.get("sender", {}).get("id")
+                text = standby_event.get("message", {}).get("text")
+                if sender_id and text:
+                    event_entry["sender_id"] = sender_id
+                    event_entry["text"] = text
+                    event_entry["status"] = "STANDBY_QUEUED"
+                    enqueue_facebook_message(sender_id=sender_id, message_text=text, platform=platform_name)
+                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
+
+            # 3. Check changes array (alternative Instagram Graph Webhooks format)
             for change in entry.get("changes", []):
                 field = change.get("field")
                 value = change.get("value", {})
@@ -363,13 +466,20 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     sender_id = value.get("sender", {}).get("id") or value.get("from", {}).get("id") or value.get("from")
                     text = value.get("message", {}).get("text") or value.get("text") or (value.get("messages", [{}])[0].get("text", {}).get("body") if isinstance(value.get("messages"), list) and value.get("messages") else None)
                     if sender_id and text:
+                        event_entry["sender_id"] = str(sender_id)
+                        event_entry["text"] = str(text)
+                        event_entry["status"] = "CHANGES_QUEUED"
                         enqueue_facebook_message(
-                            sender_id=sender_id,
-                            message_text=text,
+                            sender_id=str(sender_id),
+                            message_text=str(text),
                             platform=platform_name
                         )
                         logger.info(f"Enqueued {platform_name} message from changes ({sender_id}): '{text}'")
-                        background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
+                        background_tasks.add_task(process_and_reply_async, str(sender_id), str(text), platform_name)
+
+        WEBHOOK_LOGS.append(event_entry)
+        if len(WEBHOOK_LOGS) > 100:
+            WEBHOOK_LOGS.pop(0)
 
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
@@ -381,15 +491,27 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     from_number = message.get("from")
                     text = message.get("text", {}).get("body")
                     if from_number and text:
+                        event_entry["sender_id"] = str(from_number)
+                        event_entry["text"] = str(text)
+                        event_entry["status"] = "WHATSAPP_QUEUED"
                         enqueue_facebook_message(
-                            sender_id=from_number,
-                            message_text=text,
+                            sender_id=str(from_number),
+                            message_text=str(text),
                             platform="whatsapp"
                         )
                         logger.info(f"Enqueued whatsapp message from {from_number}: '{text}'")
-                        background_tasks.add_task(process_and_reply_async, from_number, text, "whatsapp")
+                        background_tasks.add_task(process_and_reply_async, str(from_number), str(text), "whatsapp")
+
+        WEBHOOK_LOGS.append(event_entry)
+        if len(WEBHOOK_LOGS) > 100:
+            WEBHOOK_LOGS.pop(0)
 
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
+    WEBHOOK_LOGS.append(event_entry)
+    if len(WEBHOOK_LOGS) > 100:
+        WEBHOOK_LOGS.pop(0)
+
     return PlainTextResponse("EVENT_RECEIVED", status_code=200)
+
 
