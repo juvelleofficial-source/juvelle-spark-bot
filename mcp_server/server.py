@@ -215,26 +215,32 @@ def oauth_protected_resource():
 # ==============================================================================
 
 @mcp_router.get("/webhook/facebook")
+@mcp_router.get("/webhook/instagram")
+@mcp_router.get("/webhook/meta")
 def verify_facebook_webhook(
     hub_mode: Optional[str] = Query(None, alias="hub.mode"),
     hub_verify_token: Optional[str] = Query(None, alias="hub.verify_token"),
     hub_challenge: Optional[str] = Query(None, alias="hub.challenge")
 ):
     """
-    Verification endpoint for Facebook Developer / Meta Webhooks.
-    Meta sends a GET request with hub.mode=subscribe and hub.verify_token.
+    Verification endpoint for Facebook Developer / Meta Webhooks (Instagram & Messenger).
+    Meta sends a GET request with hub.mode=subscribe, hub.verify_token, and hub.challenge.
+    Returns raw hub.challenge as text/plain to complete the verification handshake.
     """
-    logger.info(f"Facebook Webhook Verification: mode={hub_mode}, token={hub_verify_token}")
+    logger.info(f"Meta/Instagram Webhook Verification Probe: mode={hub_mode}, token={hub_verify_token}")
     if hub_mode == "subscribe" and hub_verify_token == META_VERIFY_TOKEN:
-        logger.info("Facebook Webhook verified successfully!")
+        logger.info("Meta/Instagram Webhook handshake verified successfully!")
         return PlainTextResponse(content=hub_challenge or "")
     
+    logger.warning(f"Meta Webhook Token mismatch: expected '{META_VERIFY_TOKEN}', got '{hub_verify_token}'")
     raise HTTPException(status_code=403, detail="Verification token mismatch")
 
 @mcp_router.post("/webhook/facebook")
+@mcp_router.post("/webhook/instagram")
+@mcp_router.post("/webhook/meta")
 async def receive_facebook_webhook(request: Request):
     """
-    Receives incoming messaging events from Facebook Messenger, WhatsApp, or Instagram.
+    Receives incoming messaging events from Facebook Messenger, WhatsApp, or Instagram DMs.
     Enqueues messages for Gemini Spark to process via MCP.
     """
     try:
@@ -244,8 +250,10 @@ async def receive_facebook_webhook(request: Request):
 
     logger.info(f"Incoming Meta Webhook event: {json.dumps(data)[:200]}...")
 
-    # Parse standard Meta Messenger / WhatsApp event payload
-    if data.get("object") == "page":
+    # Parse standard Meta Instagram & Messenger event payload
+    event_object = data.get("object")
+    if event_object in ["page", "instagram"]:
+        platform_name = "instagram" if event_object == "instagram" else "messenger"
         for entry in data.get("entry", []):
             for messaging_event in entry.get("messaging", []):
                 sender_id = messaging_event.get("sender", {}).get("id")
@@ -253,16 +261,17 @@ async def receive_facebook_webhook(request: Request):
                 text = message.get("text")
 
                 if sender_id and text:
-                    # Enqueue for Gemini Spark to pull and process
+                    # Enqueue for Gemini Spark / Juvelle Bot to pull and process
                     enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
-                        platform="messenger"
+                        platform=platform_name
                     )
+                    logger.info(f"Enqueued {platform_name} message from {sender_id}: '{text}'")
 
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
-    elif data.get("object") == "whatsapp_business_account":
+    elif event_object == "whatsapp_business_account":
         for entry in data.get("entry", []):
             for change in entry.get("changes", []):
                 value = change.get("value", {})
@@ -275,6 +284,7 @@ async def receive_facebook_webhook(request: Request):
                             message_text=text,
                             platform="whatsapp"
                         )
+                        logger.info(f"Enqueued whatsapp message from {from_number}: '{text}'")
 
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 

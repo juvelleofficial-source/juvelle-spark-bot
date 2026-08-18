@@ -55,6 +55,37 @@ class TestGeminiSparkMCPServer(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.text, "test_challenge_123")
 
+    def test_instagram_webhook_handshake(self):
+        """Verify Instagram Webhook verification handshake."""
+        res = self.client.get(f"/webhook/instagram?hub.mode=subscribe&hub.verify_token={META_VERIFY_TOKEN}&hub.challenge=ig_challenge_789")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.text, "ig_challenge_789")
+
+    def test_instagram_incoming_message(self):
+        """Verify incoming Instagram direct message parsing and queueing."""
+        ig_payload = {
+            "object": "instagram",
+            "entry": [
+                {
+                    "id": "IG_ACCOUNT_101",
+                    "time": 1700000000,
+                    "messaging": [
+                        {
+                            "sender": {"id": "IG_USER_5544"},
+                            "recipient": {"id": "IG_ACCOUNT_101"},
+                            "message": {
+                                "mid": "ig_mid_12345",
+                                "text": "Do you have cotton Churidar in pink?"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+        res_webhook = self.client.post("/webhook/instagram", json=ig_payload)
+        self.assertEqual(res_webhook.status_code, 200)
+        self.assertEqual(res_webhook.text, "EVENT_RECEIVED")
+
     def test_facebook_incoming_message_to_mcp_flow(self):
         """Verify end-to-end Meta Webhook -> MCP Buffer -> Gemini Spark Tool call -> Reply."""
         # 1. Simulate Meta sending an incoming customer message
