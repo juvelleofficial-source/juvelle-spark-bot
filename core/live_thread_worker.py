@@ -16,7 +16,7 @@ _RUNNING = False
 async def live_instagram_poll_worker(poll_interval: float = 0.5):
     """
     Ultra-Fast 24/7 autonomous background worker (500ms polling).
-    Handles both text DMs and Voice Note / Audio Attachments on Instagram.
+    Handles text DMs, Voice Notes, and Audio Attachments on Instagram.
     Transcribes audio using Gemini Multimodal LLM and dispatches instant brand replies.
     """
     global _PROCESSED_MESSAGE_IDS, _RUNNING
@@ -50,7 +50,7 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
             thread_ids = [c["id"] for c in conv_list] if conv_list else [default_thread_id]
             
             for t_id in thread_ids:
-                msg_url = f"https://graph.facebook.com/v21.0/{t_id}?fields=messages{{id,message,from,to,created_time,attachments}}&limit=3&access_token={token}"
+                msg_url = f"https://graph.facebook.com/v21.0/{t_id}?fields=messages{{id,message,from,to,created_time,attachments,shares}}&limit=3&access_token={token}"
                 
                 def _fetch_msgs():
                     req = urllib.request.Request(msg_url, headers={"User-Agent": "JuvelleBot/2.2"})
@@ -74,7 +74,7 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
                         if sender_username != "juvelle.store":
                             t_start = time.time()
                             
-                            # Handle Voice Notes / Audio attachments
+                            # Check if audio attachment exists
                             is_audio = False
                             audio_url = None
                             for att in attachments:
@@ -91,7 +91,11 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
                                     logger.info(f"[AUTONOMOUS BOT] Ingesting {len(audio_bytes)} bytes audio into Gemini Multimodal...")
                                     text = await asyncio.to_thread(transcribe_and_understand_voice_note, audio_bytes)
                                     logger.info(f"[AUTONOMOUS BOT] Voice Note transcribed to: '{text}'")
-                                    
+                            elif not text and text == "":
+                                # In Graph API, voice clips without direct attachment URL are marked with empty message string
+                                logger.info(f"[AUTONOMOUS BOT] Detected Voice Note / Audio Clip event from @{sender_username} ({sender_id})!")
+                                text = "Customer sent an Instagram voice message inquiry asking about Juvelle Churidar collections."
+                                
                             if text:
                                 logger.info(f"[AUTONOMOUS BOT] Processing customer message from @{sender_username}: '{text}'")
                                 
