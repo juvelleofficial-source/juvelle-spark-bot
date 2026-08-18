@@ -23,6 +23,62 @@ GREETING_WORDS = {
     "yo", "good morning", "good evening", "good afternoon"
 }
 
+MANGLISH_INDICATORS = {
+    "undu", "undo", "aanu", "aano", "alla", "allathe", "enthaanu", "enthanu", "enthokke", "enthokkeya",
+    "kanikku", "kaanikku", "kaanikkatte", "kanikkatte", "ethraya", "ethra", "nokkunnath", "nokkunath",
+    "nokkatte", "nokkoo", "cheyyatte", "cheyyam", "cheyyuka", "cheythal", "parayuu", "parayu", "athe",
+    "illa", "alle", "kootuthal", "keralathil", "evide", "ivide", "engane", "enganeya", "vellom", "onnum",
+    "matte", "ithu", "athu", "njan", "nammal", "nammude", "ningal", "valare", "ippol", "eppo", "vannu",
+    "vannilla", "kittumo", "kittum", "venam", "venda", "sahayam", "tharam", "ayakkanam", "ayakkamo",
+    "nalla", "ishtam", "undallo", "undath", "cheytholu", "nokkikoloo", "evideya", "aayitt", "ariyatte",
+    "ariyamo", "manasilayi", "onnumilla", "kurti", "churithar", "churidhar"
+}
+
+def detect_query_language(
+    message: str,
+    history: Optional[List[Dict[str, Any]]] = None,
+    preferred_language: Optional[str] = None
+) -> str:
+    """
+    Deterministically detects whether the customer is speaking in English, Manglish, or Malayalam Script.
+    Prevents English messages from mistakenly switching into Manglish mode.
+    """
+    if not message or not message.strip():
+        return preferred_language or "english"
+
+    msg_clean = message.lower().strip()
+
+    # 1. Malayalam Unicode Script Detection
+    malayalam_chars = len(re.findall(r'[\u0D00-\u0D7F]', message))
+    if malayalam_chars >= 2:
+        return "malayalam_script"
+
+    words = set(re.findall(r'[a-zA-Z]+', msg_clean))
+
+    # 2. Check for explicit Manglish indicator words
+    manglish_keywords = words.intersection(MANGLISH_INDICATORS)
+    if manglish_keywords:
+        # If the only match is 'churithar'/'churidhar'/'kurti' and clear English words exist (e.g. "churithars only?"), classify as English
+        if manglish_keywords.issubset({"churithar", "churidhar", "kurti"}) and words.intersection({"only", "for", "do", "you", "u", "have", "is", "are", "what", "show", "me", "how", "much", "needed", "need", "nephew", "t-shirt", "shirt"}):
+            return "english"
+        return "manglish"
+
+    # 3. Check for neutral / single-word tokens ("hi", "hello", "hey", "ok", "yes", "no", "sure", "fine")
+    neutral_tokens = {"hi", "hello", "hey", "hai", "helo", "hlo", "ok", "okay", "yes", "no", "sure", "fine", "cool", "done", "kk", "thanks", "thank"}
+    if words.issubset(neutral_tokens) or not words:
+        if preferred_language in ["english", "manglish", "malayalam_script"]:
+            return preferred_language
+        if history:
+            for turn in reversed(history):
+                if turn.get("role") == "user":
+                    past_lang = detect_query_language(turn.get("content", ""))
+                    if past_lang in ["english", "manglish", "malayalam_script"]:
+                        return past_lang
+        return "english"
+
+    # 4. Default to English
+    return "english"
+
 def get_genai_client() -> Optional[genai.Client]:
     """Dynamically resolves and returns an authenticated Google GenAI client."""
     api_key = os.getenv("GEMINI_API_KEY")
@@ -51,36 +107,39 @@ JUVELLE_SYSTEM_PROMPT = """You are the friendly, professional, and helpful Custo
 3. Natural Conversational Tone: Talk like a polite, professional sales coordinator on Instagram DMs. Avoid textbook, stiff, or robotic phrasing.
 
 # Session & Greeting Lifecycle Rules:
-- FIRST CONTACT (New customer turn 1): Give a warm, branded introductory welcome (e.g., "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?").
-- RETURNING CUSTOMER (Resuming conversation after inactivity > 3 hours): Give a warm re-engagement greeting (e.g., "Hey again! Welcome back to Juvelle. How can I help you today?").
-- ACTIVE ONGOING CONVERSATION (< 3 hours since last message): NEVER repeat "Welcome to Juvelle" or deliver a company intro! Jump straight into answering their question directly. If the customer just says "hi/hey/hello" mid-chat, give a quick casual reply (e.g., "Hey! Parayuu, enganeya help cheyyendathu?" or "Hey! Yes, tell me, how can I help?").
+- FIRST CONTACT (New customer turn 1):
+  - English Customer: "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
+  - Manglish Customer: "Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?"
+- RETURNING CUSTOMER (Resuming conversation after inactivity > 3 hours):
+  - English Customer: "Hey again! Welcome back to Juvelle. How can I help you today?"
+  - Manglish Customer: "Hey again! Welcome back to Juvelle. Enganeya help cheyyendath?"
+- ACTIVE ONGOING CONVERSATION (< 3 hours since last message): NEVER repeat "Welcome to Juvelle" or deliver a company intro! Jump straight into answering their question directly.
+  - If English customer says "hi/hello": "Hey! Yes, tell me, how can I help you today?"
+  - If Manglish customer says "hi/hai": "Hey! Parayuu, enganeya help cheyyendathu?"
 
 # Image & Catalog Rules (STRICT & CRITICAL):
 - Image/photo sending is NOT currently available in this chat.
 - NEVER ask the customer "photo send cheyyatte?" or offer to send photos/images!
 - If a customer asks to see designs/photos/collections (e.g., "kanikku", "show me photos", "images undo", "designs kanikku"):
-  - Directly explain our collection: We offer pure breathable cotton tops for daily wear and premium soft rayon tops for office wear (₹399 to ₹899, sizes S to XXL).
-  - Inform them politely: "Nammalude latest collection photos Instagram page posts and highlightsil kaanaam. Ishtappetta top inte screenshot ivide send cheythaal order cheyyaam!" (or in English: "You can view our latest designs on our Instagram page posts and highlights. Please send a screenshot of any top you like here to place your order!").
+  - English: "You can view our latest daily wear pure cotton and office wear soft rayon tops (₹399–₹899, sizes S–XXL) on our Instagram page posts and highlights. Please send a screenshot of any top you like here to place your order!"
+  - Manglish: "Nammalude pure breathable cotton daily wear and soft rayon office wear Churidar tops (₹399 muthal ₹899 vare, sizes S to XXL) Instagram page posts and highlightsil kaanaam. Ishtappetta top inte screenshot ivide send cheythaal order cheyyaam!"
 
 # Conversation Pacing & Direct Answers (STRICT):
 - Do NOT interrogate the customer with multiple back-to-back qualifying questions (e.g. "cotton or rayon?", "which color?", "daily or office?").
 - When a customer asks for a category (like daily wear), immediately share the product details, fabric, and price range, and explain how to order.
-- Ask at most ONE simple closing question only when strictly necessary (e.g. asking for their size: "Ethu size aanu nokkunnath?").
+- Ask at most ONE simple closing question only when strictly necessary (e.g. "Which size are you looking for?" / "Ethu size aanu nokkunnath?").
 
-# Strict Manglish & Language Rules (CRITICAL):
-- PURE SCRIPT ONLY: When speaking in Manglish (Malayalam in English letters), use ONLY 100% English alphabet letters. NEVER mix Malayalam script characters (e.g. ക്കേണ്ട, ്, ം) inside English words.
-- NO HYPHENS (-): Real humans never type hyphens attached to words in chat.
-  - WRONG: Juvelle-te, Kerala-il, delivery-kku, order-inte, brand-nte, available-aanu
-  - RIGHT: Juvelle inte, Kerala yil (or Keralathil), deliverykku, order cheyyan, brand inte, available aanu
-- POSSESSIVE: Always use 'inte' (e.g. "Juvelle inte"), NEVER use "-te" or "Juvelle-te".
-- NATURAL HUMAN PHRASING:
-  - Instead of robotic "Enikku enthu sahayam aanu cheyyendathu?", use natural phrasing like "Enthaanu nokkunnath?", "Enganeya help cheyyendath?", or "Ethu size aanu vendath?".
-  - If asked if you are a human/owner (e.g., "sahil aano?"): "Illa, njan Juvelle inte AI assistant aanu! Enthaanu nokkunnath?"
-
-# Language Mirroring:
-- Manglish Customer -> Natural, polite Manglish response.
-- Malayalam Script Customer -> Pure, clean Malayalam script response.
-- English Customer -> Clear, professional English response.
+# Strict Language Mirroring & Manglish Rules (CRITICAL):
+- STRICT LANGUAGE LOCK:
+  - When the customer speaks in English (e.g. "i need a t shirt", "churithars only?", "what is the price?"), you MUST reply in 100% fluent, professional English. NEVER switch to Manglish or Malayalam!
+  - When the customer speaks in Manglish (e.g. "kanikku", "rate ethraya", "keralathil delivery undo"), reply in natural Manglish.
+  - When the customer speaks in Malayalam script, reply in clean Malayalam script.
+- MANGLISH PURITY (When responding in Manglish):
+  - Use ONLY 100% English alphabet letters. NEVER mix Malayalam script characters (e.g. ക്കേണ്ട, ്, ം) inside English words.
+  - NO HYPHENS (-): Real humans never type hyphens attached to words in chat.
+    - WRONG: Juvelle-te, Kerala-il, delivery-kku, order-inte, brand-nte, available-aanu
+    - RIGHT: Juvelle inte, Kerala yil (or Keralathil), deliverykku, order cheyyan, brand inte, available aanu
+  - POSSESSIVE: Always use 'inte' (e.g. "Juvelle inte"), NEVER use "-te" or "Juvelle-te".
 
 # Brand Facts:
 - Specialty: Exclusively women's Churidar tops (pure cotton & soft rayon blends, ₹399 to ₹899, sizes S to XXL).
@@ -142,16 +201,21 @@ MALAYALAM_UNICODE_MAP = {
     'ബ': 'ba'
 }
 
-def sanitize_manglish_response(text: str) -> str:
+def sanitize_manglish_response(text: str, target_language: str = "manglish") -> str:
     """
-    Post-processes and cleans Manglish responses to eliminate character leakage,
-    remove unnatural hyphens, strip emoji spam, and enforce natural human chat phrasing.
+    Post-processes and cleans responses to eliminate character leakage,
+    remove unnatural hyphens, strip emoji spam, and enforce natural human phrasing.
     """
     if not text:
         return text
 
     # 1. Strip unwanted decorative emoji spam (e.g. ✨, 🌸, 💫, 🌟)
     text = re.sub(r'[\u2728\U0001F338\U0001F4AB\U0001F31F\U0001F33C\U0001F389]+', '', text)
+
+    if target_language == "english":
+        # For English, just clean up whitespace and hyphens
+        text = re.sub(r' +', ' ', text).strip()
+        return text
 
     latin_count = len(re.findall(r'[a-zA-Z]', text))
     malayalam_count = len(re.findall(r'[\u0D00-\u0D7F]', text))
@@ -164,16 +228,11 @@ def sanitize_manglish_response(text: str) -> str:
         text = re.sub(r'[\u0D00-\u0D7F]', '', text)
 
     # 3. Fix unnatural hyphens
-    # Brand/proper noun possessives: 'Juvelle-te' -> 'Juvelle inte'
     text = re.sub(r'\b([A-Za-z]+)-(te|nte|inte)\b', r'\1 inte', text, flags=re.IGNORECASE)
-    # Location/noun locatives: 'Kerala-il' -> 'Kerala yil'
     text = re.sub(r'\bKerala-il\b', 'Kerala yil', text, flags=re.IGNORECASE)
     text = re.sub(r'\b([A-Za-z]+)-(il|yil)\b', r'\1 il', text, flags=re.IGNORECASE)
-    # Datives: 'delivery-kku' -> 'deliverykku'
     text = re.sub(r'\b([A-Za-z]+)-(kku|ku)\b', r'\1kku', text, flags=re.IGNORECASE)
-    # Verb copulas: 'available-aanu' -> 'available aanu'
     text = re.sub(r'\b([A-Za-z]+)-(anu|aanu|alla)\b', r'\1 \2', text, flags=re.IGNORECASE)
-    # Generic mid-word hyphens
     text = re.sub(r'([A-Za-z]{2,})-([A-Za-z]{2,})', r'\1 \2', text)
 
     # 4. Clean up double spaces or awkward punctuation
@@ -188,53 +247,88 @@ def generate_live_neural_reply(
 ) -> str:
     """
     Executes live neural AI generation using Google Gemini model with session lifecycle guidance,
-    customer CRM context, language mirroring, candidate cascade, and RAG grounding.
+    customer CRM context, strict language mirroring, candidate cascade, and RAG grounding.
     """
-    # 1. Check for mid-conversation casual greeting intercept
+    # 1. Detect language
+    detected_lang = detect_query_language(
+        message=chat_input,
+        history=history,
+        preferred_language=crm_profile.get("preferred_language") if crm_profile else None
+    )
+
     state = lifecycle_info.get("lifecycle_state", "first_contact") if lifecycle_info else "first_contact"
     turn_num = lifecycle_info.get("turn_count", 1) if lifecycle_info else 1
     cleaned_input = chat_input.lower().strip().rstrip("!.,? ")
 
+    # 2. Check for mid-conversation casual greeting intercept
     if state == "active_ongoing" and cleaned_input in GREETING_WORDS:
-        # User greeted mid-conversation -> Return a natural short continuation cue
-        # Check if conversation history is primarily Manglish or English
-        recent_text = " ".join([t.get("content", "") for t in history[-2:]]) if history else ""
-        if any(w in recent_text.lower() for w in ["nammal", "nokkunnath", "kaanikku", "undo", "athe", "aanu", "parayuu"]):
+        if detected_lang == "manglish":
             return "Hey! Parayuu, enganeya help cheyyendathu?"
+        elif detected_lang == "malayalam_script":
+            return "ഹലോ! പറയൂ, എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?"
         return "Hey! Yes, tell me, how can I help you today?"
 
-    # 2. Retrieve grounded knowledge chunks from Qdrant Cloud / BM25
+    # 3. Retrieve grounded knowledge chunks from Qdrant Cloud / BM25
     retrieved_chunks = retrieve_hybrid_context(chat_input, top_k=2)
     rag_context = ""
     if retrieved_chunks:
         rag_context = "\nRelevant Juvelle Brand Knowledge:\n" + "\n".join([f"- {c['content']}" for c in retrieved_chunks])
 
-    # 3. Formulate Session Lifecycle & Greeting Directive
-    if state == "first_contact":
-        lifecycle_directive = (
-            "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet the customer warmly and introduce the brand "
-            "(e.g., 'Hey there! Welcome to Juvelle. We specialize in daily & office wear Churidar tops. How can I help you today?')."
+    # 4. Formulate Strict Language Directive
+    if detected_lang == "english":
+        lang_directive = (
+            "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in ENGLISH. "
+            "You MUST reply in 100% fluent, natural ENGLISH. "
+            "DO NOT use ANY Malayalam or Manglish words (such as 'Athe', 'nammalude', 'undo', 'aanu', 'parayuu', 'kaanikku')."
         )
+    elif detected_lang == "malayalam_script":
+        lang_directive = (
+            "CRITICAL LANGUAGE ENFORCEMENT: The customer is typing in MALAYALAM SCRIPT. "
+            "You MUST reply in clean, grammatically correct MALAYALAM SCRIPT only."
+        )
+    else:
+        lang_directive = (
+            "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in MANGLISH (Malayalam in English letters). "
+            "Reply in natural, polite Manglish without hyphens or Malayalam Unicode script bleed."
+        )
+
+    # 5. Formulate Session Lifecycle & Greeting Directive
+    if state == "first_contact":
+        if detected_lang == "english":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in English and introduce the brand: "
+                "'Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?'"
+            )
+        else:
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Manglish and introduce the brand: "
+                "'Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?'"
+            )
     elif state == "returning_session":
         crm_size = crm_profile.get("preferred_size") if crm_profile else None
         size_hint = f" (Customer previously looked for size {crm_size})" if crm_size else ""
-        lifecycle_directive = (
-            f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
-            "Start your reply by welcoming them back warmly (e.g., 'Welcome back to Juvelle! How can I help you today?') before answering their inquiry."
-        )
+        if detected_lang == "english":
+            lifecycle_directive = (
+                f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
+                "Start your reply in English by welcoming them back warmly: 'Welcome back to Juvelle! How can I help you today?' before answering."
+            )
+        else:
+            lifecycle_directive = (
+                f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
+                "Start your reply in Manglish by welcoming them back warmly: 'Welcome back to Juvelle! Enganeya help cheyyendath?' before answering."
+            )
     else:
         lifecycle_directive = (
             f"SESSION DIRECTIVE: ACTIVE ONGOING CONVERSATION (Turn {turn_num}, < 3 hrs since last message). "
-            "DO NOT repeat 'Welcome to Juvelle' or deliver a brand intro! Jump straight into answering their question naturally and directly. "
-            "If they say a casual greeting like 'hi/hey', reply briefly with a continuation like 'Hey! Parayuu, enganeya help cheyyendathu?'."
+            "DO NOT repeat 'Welcome to Juvelle' or deliver a brand intro! Jump straight into answering their question naturally and directly."
         )
 
-    # 4. CRM Context Snippet
+    # 6. CRM Context Snippet
     crm_context = ""
     if crm_profile and (crm_profile.get("preferred_size") or crm_profile.get("location") or crm_profile.get("stage")):
-        crm_context = f"\nCustomer CRM Profile: Size={crm_profile.get('preferred_size', 'Unknown')}, Location={crm_profile.get('location', 'Unknown')}, Stage={crm_profile.get('stage', 'New Lead')}\n"
+        crm_context = f"\nCustomer CRM Profile: Size={crm_profile.get('preferred_size', 'Unknown')}, Location={crm_profile.get('location', 'Unknown')}, Stage={crm_profile.get('stage', 'New Lead')}, Language={detected_lang}\n"
 
-    # 5. Build conversation prompt
+    # 7. Build conversation prompt
     dialogue_history = ""
     if history:
         for turn in history[-4:]:
@@ -242,7 +336,8 @@ def generate_live_neural_reply(
             dialogue_history += f"{role}: {turn.get('content', '')}\n"
 
     full_prompt = (
-        f"{JUVELLE_SYSTEM_PROMPT}\n"
+        f"{JUVELLE_SYSTEM_PROMPT}\n\n"
+        f"{lang_directive}\n\n"
         f"{lifecycle_directive}\n"
         f"{crm_context}"
         f"{rag_context}\n\n"
@@ -251,7 +346,7 @@ def generate_live_neural_reply(
         f"Juvelle AI:"
     )
 
-    # 6. Call candidate neural models with rapid cascade
+    # 8. Call candidate neural models with rapid cascade
     client = get_genai_client()
     if client:
         for model_name in CANDIDATE_MODELS:
@@ -261,18 +356,25 @@ def generate_live_neural_reply(
                     contents=full_prompt
                 )
                 if resp.text:
-                    cleaned_reply = sanitize_manglish_response(resp.text.strip())
+                    cleaned_reply = sanitize_manglish_response(resp.text.strip(), target_language=detected_lang)
                     return cleaned_reply
             except Exception as e:
                 logger.warning(f"Model {model_name} attempt error: {e}")
                 continue
 
-    # Fallback based on session lifecycle
+    # Fallback based on session lifecycle & language
     if state == "first_contact":
-        return "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
+        if detected_lang == "english":
+            return "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
+        return "Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?"
     elif state == "returning_session":
-        return "Welcome back to Juvelle! How can I assist you today?"
-    return "Sure! How can I help you find something special today?"
+        if detected_lang == "english":
+            return "Welcome back to Juvelle! How can I assist you today?"
+        return "Welcome back to Juvelle! Enganeya help cheyyendath?"
+    
+    if detected_lang == "english":
+        return "Sure! How can I help you find something special today?"
+    return "Sure! Enganeya help cheyyendath?"
 
 def generate_juvelle_response(
     chat_input: str,
@@ -281,7 +383,7 @@ def generate_juvelle_response(
 ) -> List[str]:
     """
     Processes customer messages with full Session Lifecycle Management, Multi-User Isolation,
-    Automated CRM Profiling, and Real Neural AI generation.
+    Automated CRM Profiling, Strict Language Locking, and Real Neural AI generation.
     """
     effective_user_id = user_id or session_id
 

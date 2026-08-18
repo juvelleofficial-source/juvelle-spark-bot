@@ -5,7 +5,7 @@ from api.main import app
 from mcp_server.tools_registry import execute_mcp_tool
 from mcp_server.message_queue import get_message_reply, get_pending_messages
 from ingestion.ingestion_job import run_ingestion_pipeline
-from core.juvelle_agent import sanitize_manglish_response, generate_juvelle_response
+from core.juvelle_agent import sanitize_manglish_response, generate_juvelle_response, detect_query_language
 from memory.short_term_memory import memory_manager
 
 class TestGeminiSparkPureMCP(unittest.TestCase):
@@ -66,7 +66,6 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
     def test_05_end_to_end_spark_inbox_flow(self):
         """Verify message enqueueing and Spark send_facebook_reply resolution"""
         from mcp_server.message_queue import enqueue_facebook_message
-        # 1. Enqueue inquiry into MCP Inbox
         msg_id = enqueue_facebook_message(
             sender_id="spark_flow_test",
             message_text="Do you deliver to Bangalore?",
@@ -75,13 +74,11 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
         )
         self.assertTrue(msg_id.startswith("fb_"))
 
-        # 2. Spark fetches pending messages
         pending = execute_mcp_tool("get_pending_facebook_messages", {"limit": 5})
         messages = pending["messages"]
         self.assertTrue(any(m["sender_id"] == "spark_flow_test" for m in messages))
         target_msg = next(m for m in messages if m["sender_id"] == "spark_flow_test")
 
-        # 3. Spark sends reply
         reply_res = execute_mcp_tool("send_facebook_reply", {
             "message_id": target_msg["message_id"],
             "recipient_id": target_msg["sender_id"],
@@ -89,10 +86,8 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
         })
         self.assertEqual(reply_res["status"], "delivered")
 
-        # 4. Verify reply was persisted in queue
         saved_reply = get_message_reply(target_msg["message_id"])
         self.assertIn("Kerala", saved_reply)
-
 
     def test_06_emoji_sanitizer_removes_spam(self):
         """Verify sanitize_manglish_response removes flower and sparkle spam"""
@@ -120,7 +115,6 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
         self.assertEqual(resp2.status_code, 200)
         reply2 = resp2.json()["output"][0]
         
-        # It must NOT return the full first-time onboarding introduction
         self.assertNotIn("Welcome to Juvelle", reply2)
         self.assertIn("Hey", reply2)
 
@@ -137,6 +131,39 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
         self.assertNotIn("photo send cheyyatte", reply.lower())
         self.assertNotIn("✨", reply)
         self.assertNotIn("🌸", reply)
+
+    def test_09_english_conversation_never_switches_to_manglish(self):
+        """Verify English inputs consistently receive 100% English replies without Manglish bleed"""
+        sess_id = f"test_user_english_{int(time.time())}"
+
+        # Turn 1: English greeting
+        r1 = self.client.post("/webhook/instagram-test", json={"chatInput": "hi", "sessionId": sess_id})
+        rep1 = " ".join(r1.json()["output"])
+        self.assertEqual(detect_query_language("hi"), "english")
+
+        # Turn 2: English question about T-shirt
+        r2 = self.client.post("/webhook/instagram-test", json={"chatInput": "i needed a T shirt for my nephew, do u guys have one?", "sessionId": sess_id})
+        rep2 = " ".join(r2.json()["output"])
+        self.assertIn("Churidar", rep2)
+        self.assertNotIn("Athe", rep2)
+        self.assertNotIn("nammalude", rep2)
+
+        # Turn 3: English clarification "churithars only?"
+        r3 = self.client.post("/webhook/instagram-test", json={"chatInput": "churithars only?", "sessionId": sess_id})
+        rep3 = " ".join(r3.json()["output"])
+        # Must be in English, NOT "Athe, nammalude collectionil exclusive aayitt..."
+        self.assertNotIn("Athe", rep3)
+        self.assertNotIn("nammalude", rep3)
+        self.assertNotIn("aanu", rep3)
+        self.assertTrue("exclusive" in rep3.lower() or "only" in rep3.lower() or "specialize" in rep3.lower() or "yes" in rep3.lower())
+
+    def test_10_manglish_conversation_mirrors_manglish(self):
+        """Verify Manglish input receives clean, natural Manglish response"""
+        sess_id = f"test_user_manglish_{int(time.time())}"
+
+        r = self.client.post("/webhook/instagram-test", json={"chatInput": "daily wear undo? rate ethraya?", "sessionId": sess_id})
+        rep = " ".join(r.json()["output"])
+        self.assertTrue("undu" in rep.lower() or "aanu" in rep.lower() or "available" in rep.lower())
 
 if __name__ == "__main__":
     unittest.main()

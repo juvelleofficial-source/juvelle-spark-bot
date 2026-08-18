@@ -50,6 +50,7 @@ def init_memory_db() -> None:
         user_id TEXT PRIMARY KEY,
         preferred_size TEXT,
         preferred_fabric TEXT,
+        preferred_language TEXT DEFAULT 'english',
         location TEXT,
         stage TEXT DEFAULT 'New Lead',
         total_turns INTEGER DEFAULT 1,
@@ -58,9 +59,14 @@ def init_memory_db() -> None:
         notes TEXT
     )
     """)
+    try:
+        cursor.execute("ALTER TABLE customer_crm ADD COLUMN preferred_language TEXT DEFAULT 'english'")
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
+
     logger.info(f"Initialized local SQLite memory & CRM store at {DB_PATH}")
 
 def log_conversation_turn(
@@ -218,6 +224,7 @@ def upsert_customer_crm(
     user_id: str,
     preferred_size: Optional[str] = None,
     preferred_fabric: Optional[str] = None,
+    preferred_language: Optional[str] = None,
     location: Optional[str] = None,
     stage: Optional[str] = None,
     tags: Optional[List[str]] = None,
@@ -231,13 +238,14 @@ def upsert_customer_crm(
     cursor = conn.cursor()
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    cursor.execute("SELECT preferred_size, preferred_fabric, location, stage, total_turns, tags, notes FROM customer_crm WHERE user_id = ?", (user_id,))
+    cursor.execute("SELECT preferred_size, preferred_fabric, preferred_language, location, stage, total_turns, tags, notes FROM customer_crm WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
 
     if row:
-        curr_size, curr_fabric, curr_loc, curr_stage, curr_turns, curr_tags_str, curr_notes = row
+        curr_size, curr_fabric, curr_lang, curr_loc, curr_stage, curr_turns, curr_tags_str, curr_notes = row
         new_size = preferred_size or curr_size
         new_fabric = preferred_fabric or curr_fabric
+        new_lang = preferred_language or curr_lang or "english"
         new_loc = location or curr_loc
         new_stage = stage or curr_stage
         new_turns = curr_turns + 1
@@ -252,13 +260,14 @@ def upsert_customer_crm(
 
         cursor.execute("""
         UPDATE customer_crm
-        SET preferred_size = ?, preferred_fabric = ?, location = ?, stage = ?,
+        SET preferred_size = ?, preferred_fabric = ?, preferred_language = ?, location = ?, stage = ?,
             total_turns = ?, last_active = ?, tags = ?, notes = ?
         WHERE user_id = ?
-        """, (new_size, new_fabric, new_loc, new_stage, new_turns, now_iso, json.dumps(combined_tags), new_notes, user_id))
+        """, (new_size, new_fabric, new_lang, new_loc, new_stage, new_turns, now_iso, json.dumps(combined_tags), new_notes, user_id))
     else:
         new_size = preferred_size
         new_fabric = preferred_fabric
+        new_lang = preferred_language or "english"
         new_loc = location
         new_stage = stage or "New Lead"
         new_turns = 1
@@ -266,9 +275,9 @@ def upsert_customer_crm(
         new_notes = notes or ""
 
         cursor.execute("""
-        INSERT INTO customer_crm (user_id, preferred_size, preferred_fabric, location, stage, total_turns, last_active, tags, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (user_id, new_size, new_fabric, new_loc, new_stage, new_turns, now_iso, json.dumps(combined_tags), new_notes))
+        INSERT INTO customer_crm (user_id, preferred_size, preferred_fabric, preferred_language, location, stage, total_turns, last_active, tags, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (user_id, new_size, new_fabric, new_lang, new_loc, new_stage, new_turns, now_iso, json.dumps(combined_tags), new_notes))
 
     conn.commit()
     conn.close()
@@ -277,6 +286,7 @@ def upsert_customer_crm(
         "user_id": user_id,
         "preferred_size": new_size,
         "preferred_fabric": new_fabric,
+        "preferred_language": new_lang,
         "location": new_loc,
         "stage": new_stage,
         "total_turns": new_turns,
@@ -293,7 +303,7 @@ def get_customer_crm(user_id: str) -> Optional[Dict[str, Any]]:
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT user_id, preferred_size, preferred_fabric, location, stage, total_turns, last_active, tags, notes
+    SELECT user_id, preferred_size, preferred_fabric, preferred_language, location, stage, total_turns, last_active, tags, notes
     FROM customer_crm
     WHERE user_id = ?
     """, (user_id,))
@@ -308,13 +318,15 @@ def get_customer_crm(user_id: str) -> Optional[Dict[str, Any]]:
         "user_id": row[0],
         "preferred_size": row[1],
         "preferred_fabric": row[2],
-        "location": row[3],
-        "stage": row[4],
-        "total_turns": row[5],
-        "last_active": row[6],
-        "tags": json.loads(row[7]) if row[7] else [],
-        "notes": row[8]
+        "preferred_language": row[3] or "english",
+        "location": row[4],
+        "stage": row[5],
+        "total_turns": row[6],
+        "last_active": row[7],
+        "tags": json.loads(row[8]) if row[8] else [],
+        "notes": row[9]
     }
+
 
 def list_customers_crm(
     stage: Optional[str] = None,

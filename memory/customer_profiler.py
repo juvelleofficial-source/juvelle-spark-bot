@@ -43,9 +43,38 @@ SUPPORT_INTENT_KEYWORDS = [
     "reach", "delay", "not received", "item vannilla", "complaint"
 ]
 
+MANGLISH_INDICATORS = {
+    "undu", "undo", "aanu", "aano", "alla", "allathe", "enthaanu", "enthanu", "enthokke", "enthokkeya",
+    "kanikku", "kaanikku", "kaanikkatte", "kanikkatte", "ethraya", "ethra", "nokkunnath", "nokkunath",
+    "nokkatte", "nokkoo", "cheyyatte", "cheyyam", "cheyyuka", "cheythal", "parayuu", "parayu", "athe",
+    "illa", "alle", "kootuthal", "keralathil", "evide", "ivide", "engane", "enganeya", "vellom", "onnum",
+    "matte", "ithu", "athu", "njan", "nammal", "nammude", "ningal", "valare", "ippol", "eppo", "vannu",
+    "vannilla", "kittumo", "kittum", "venam", "venda", "sahayam", "tharam", "ayakkanam", "ayakkamo",
+    "nalla", "ishtam", "undallo", "undath", "cheytholu", "nokkikoloo", "evideya", "aayitt"
+}
+
+def extract_language_signal(message: str) -> Optional[str]:
+    """Extracts language signal from customer message."""
+    if not message:
+        return None
+    # 1. Malayalam Script
+    if len(re.findall(r'[\u0D00-\u0D7F]', message)) >= 2:
+        return "malayalam_script"
+    
+    # 2. Manglish Keywords
+    words = set(re.findall(r'[a-zA-Z]+', message.lower()))
+    if words.intersection(MANGLISH_INDICATORS):
+        return "manglish"
+    
+    # 3. Explicit English structure
+    english_cues = {"only", "need", "needed", "nephew", "t-shirt", "shirt", "what", "where", "when", "why", "how", "have", "deliver", "shipping", "price", "show", "collection"}
+    if words.intersection(english_cues) or (len(words) >= 2 and not words.intersection(MANGLISH_INDICATORS)):
+        return "english"
+    return None
+
 def analyze_and_profile_customer(user_id: str, message: str) -> Dict[str, Any]:
     """
-    Extracts key demographic, preference, and intent signals from a customer's message,
+    Extracts key demographic, preference, intent, and language signals from a customer's message,
     and updates the long-term CRM dossier.
     """
     msg_clean = message.lower()
@@ -71,7 +100,10 @@ def analyze_and_profile_customer(user_id: str, message: str) -> Dict[str, Any]:
             detected_location = loc.capitalize()
             break
 
-    # 4. Lifecycle Stage Detection
+    # 4. Language Signal Extraction
+    detected_lang = extract_language_signal(message)
+
+    # 5. Lifecycle Stage Detection
     detected_stage: Optional[str] = None
     tags = []
 
@@ -91,13 +123,16 @@ def analyze_and_profile_customer(user_id: str, message: str) -> Dict[str, Any]:
         tags.append(f"Fabric:{detected_fabric}")
     if detected_location:
         tags.append(f"Location:{detected_location}")
+    if detected_lang:
+        tags.append(f"Lang:{detected_lang.capitalize()}")
 
-    # 5. Persist to CRM SQLite
+    # 6. Persist to CRM SQLite
     try:
         updated_crm = upsert_customer_crm(
             user_id=user_id,
             preferred_size=detected_size,
             preferred_fabric=detected_fabric,
+            preferred_language=detected_lang,
             location=detected_location,
             stage=detected_stage,
             tags=tags if tags else None
@@ -106,3 +141,4 @@ def analyze_and_profile_customer(user_id: str, message: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to update customer CRM profile: {e}")
         return {"user_id": user_id, "error": str(e)}
+
