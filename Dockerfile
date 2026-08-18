@@ -5,6 +5,7 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
+    PYTHONPATH=/app \
     PORT=8000 \
     HOST=0.0.0.0
 
@@ -27,7 +28,7 @@ COPY . /app/
 RUN mkdir -p /app/data
 
 # Expose standard web ports
-EXPOSE 8000 7860 8080
+EXPOSE 8000 7860 8080 10000
 
-# Start FastAPI serving server with Uvicorn dynamically binding to $PORT
-CMD ["sh", "-c", "python -m uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Start FastAPI serving server with clean Python entrypoint
+CMD ["python", "start.py"]
