@@ -278,6 +278,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
     if event_object in ["page", "instagram"]:
         platform_name = "instagram" if event_object == "instagram" else "messenger"
         for entry in data.get("entry", []):
+            # 1. Check messaging array (standard Meta Messenger/Instagram format)
             for messaging_event in entry.get("messaging", []):
                 sender_id = messaging_event.get("sender", {}).get("id")
                 message = messaging_event.get("message", {})
@@ -288,16 +289,29 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     continue
 
                 if sender_id and text:
-                    # Enqueue for audit / MCP
                     enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
                         platform=platform_name
                     )
                     logger.info(f"Enqueued {platform_name} message from {sender_id}: '{text}'")
-
-                    # Launch autonomous real-time AI response in background task
                     background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
+
+            # 2. Check changes array (alternative Instagram Graph Webhooks format)
+            for change in entry.get("changes", []):
+                field = change.get("field")
+                value = change.get("value", {})
+                if field in ["messages", "messaging_postbacks"] or "messages" in change:
+                    sender_id = value.get("sender", {}).get("id") or value.get("from", {}).get("id") or value.get("from")
+                    text = value.get("message", {}).get("text") or value.get("text") or (value.get("messages", [{}])[0].get("text", {}).get("body") if isinstance(value.get("messages"), list) and value.get("messages") else None)
+                    if sender_id and text:
+                        enqueue_facebook_message(
+                            sender_id=sender_id,
+                            message_text=text,
+                            platform=platform_name
+                        )
+                        logger.info(f"Enqueued {platform_name} message from changes ({sender_id}): '{text}'")
+                        background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
         return PlainTextResponse("EVENT_RECEIVED", status_code=200)
 
