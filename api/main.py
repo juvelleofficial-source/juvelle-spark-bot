@@ -77,6 +77,10 @@ async def startup_event():
         
     # Start 24/7 keep-alive worker
     asyncio.create_task(keep_alive_background_worker())
+    
+    # Start 24/7 Real-Time Live Instagram DM Poller Worker
+    from core.live_thread_worker import live_instagram_poll_worker
+    asyncio.create_task(live_instagram_poll_worker())
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
