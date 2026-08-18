@@ -2,7 +2,7 @@ import time
 import logging
 from typing import List, Dict, Any, Optional
 from collections import defaultdict
-from memory.long_term_memory import log_conversation_turn, get_session_history, get_user_turns_count
+from memory.long_term_memory import log_conversation_turn, get_session_history, get_user_turns_count, get_last_turn_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -26,32 +26,47 @@ class ShortTermMemoryManager:
         """
         Determines the exact conversational lifecycle state:
         - 'first_contact': Brand new user, 0 prior interactions -> Deliver Full Warm Welcome.
-        - 'returning_session': Inactive for > 30 mins -> Deliver Welcome Back Re-engagement.
-        - 'active_ongoing': Active within < 30 mins -> Maintain flow, ZERO repeated greetings.
+        - 'returning_session': Inactive for > 3 hours -> Deliver Welcome Back Re-engagement.
+        - 'active_ongoing': Active within < 3 hours -> Maintain flow, ZERO repeated greetings.
         """
         now = time.time()
         meta = _SESSION_META.get(session_id)
 
         if not meta:
-            # Check SQLite if this user had past conversations from earlier sessions
+            # Check SQLite if this user/session had past conversations and check last turn timestamp
+            last_ts = get_last_turn_timestamp(user_id=user_id, session_id=session_id)
             past_total_turns = get_user_turns_count(user_id)
-            if past_total_turns == 0:
+
+            if past_total_turns == 0 or last_ts is None:
                 lifecycle_state = "first_contact"
+                is_first = True
+                turn_cnt = 1
+                idle_sec = 0
             else:
-                lifecycle_state = "returning_session"
+                idle_sec = int(now - last_ts)
+                if idle_sec <= self.timeout_seconds:
+                    # Prior interaction within 3 hours -> Active ongoing session
+                    lifecycle_state = "active_ongoing"
+                    is_first = False
+                    turn_cnt = past_total_turns + 1
+                else:
+                    # Inactive > 3 hours -> Returning customer session
+                    lifecycle_state = "returning_session"
+                    is_first = True
+                    turn_cnt = 1
 
             _SESSION_META[session_id] = {
                 "first_seen": now,
                 "last_active": now,
-                "turn_count": 1,
+                "turn_count": turn_cnt,
                 "session_start_time": now,
                 "lifecycle_state": lifecycle_state
             }
             return {
                 "lifecycle_state": lifecycle_state,
-                "is_first_turn_of_session": True,
-                "turn_count": 1,
-                "idle_seconds": 0
+                "is_first_turn_of_session": is_first,
+                "turn_count": turn_cnt,
+                "idle_seconds": idle_sec
             }
 
         # Existing active in-memory session metadata

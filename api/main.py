@@ -255,7 +255,7 @@ async def instagram_webhook_handler(request: Request):
         return {"output": messages}
     except Exception as e:
         logger.error(f"Error handling instagram test webhook: {e}")
-        return {"output": ["Thank you for reaching out to Juvelle! ✨ Please let us know what top you are looking for."]}
+        return {"output": ["Thank you for reaching out to Juvelle! Please let us know what top you are looking for."]}
 
 @app.get("/")
 def serve_index():

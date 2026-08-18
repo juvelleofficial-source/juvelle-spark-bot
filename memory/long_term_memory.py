@@ -134,6 +134,30 @@ def get_user_turns_count(user_id: str) -> int:
     conn.close()
     return count
 
+def get_last_turn_timestamp(user_id: str, session_id: Optional[str] = None) -> Optional[float]:
+    """
+    Returns the Unix timestamp (seconds since epoch) of the most recent conversation turn
+    for a given user_id (and optionally session_id), or None if no prior turns exist.
+    """
+    init_memory_db()
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    if session_id:
+        cursor.execute("SELECT timestamp FROM conversation_turns WHERE session_id = ? ORDER BY timestamp DESC LIMIT 1", (session_id,))
+    else:
+        cursor.execute("SELECT timestamp FROM conversation_turns WHERE user_id = ? ORDER BY timestamp DESC LIMIT 1", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row or not row[0]:
+        return None
+    try:
+        ts_str = row[0]
+        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+        return dt.timestamp()
+    except Exception:
+        return None
+
+
 def get_user_profile(user_id: str) -> Optional[Dict[str, Any]]:
     """
     Retrieves long-term consolidated profile for a user.

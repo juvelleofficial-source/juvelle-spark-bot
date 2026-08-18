@@ -1,13 +1,16 @@
 import unittest
+import time
 from fastapi.testclient import TestClient
 from api.main import app
 from mcp_server.tools_registry import execute_mcp_tool
 from mcp_server.message_queue import get_message_reply, get_pending_messages
 from ingestion.ingestion_job import run_ingestion_pipeline
+from core.juvelle_agent import sanitize_manglish_response, generate_juvelle_response
+from memory.short_term_memory import memory_manager
 
 class TestGeminiSparkPureMCP(unittest.TestCase):
     """
-    Unit & integration tests verifying Pure Gemini Spark MCP Architecture (Zero API Keys).
+    Unit & integration tests verifying Pure Gemini Spark MCP Architecture and Juvelle Conversational Flow.
     """
 
     @classmethod
@@ -62,12 +65,15 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
 
     def test_05_end_to_end_spark_inbox_flow(self):
         """Verify message enqueueing and Spark send_facebook_reply resolution"""
-        # 1. Enqueue inquiry via tester webhook
-        post_resp = self.client.post(
-            "/webhook/instagram-test",
-            json={"chatInput": "Do you deliver to Bangalore?", "sessionId": "spark_flow_test"}
+        from mcp_server.message_queue import enqueue_facebook_message
+        # 1. Enqueue inquiry into MCP Inbox
+        msg_id = enqueue_facebook_message(
+            sender_id="spark_flow_test",
+            message_text="Do you deliver to Bangalore?",
+            sender_name="Tester Spark",
+            platform="instagram"
         )
-        self.assertEqual(post_resp.status_code, 200)
+        self.assertTrue(msg_id.startswith("fb_"))
 
         # 2. Spark fetches pending messages
         pending = execute_mcp_tool("get_pending_facebook_messages", {"limit": 5})
@@ -79,13 +85,58 @@ class TestGeminiSparkPureMCP(unittest.TestCase):
         reply_res = execute_mcp_tool("send_facebook_reply", {
             "message_id": target_msg["message_id"],
             "recipient_id": target_msg["sender_id"],
-            "reply_text": "Juvelle delivers exclusively within Kerala via Delhivery! ✨"
+            "reply_text": "Juvelle delivers exclusively within Kerala via Delhivery."
         })
         self.assertEqual(reply_res["status"], "delivered")
 
         # 4. Verify reply was persisted in queue
         saved_reply = get_message_reply(target_msg["message_id"])
         self.assertIn("Kerala", saved_reply)
+
+
+    def test_06_emoji_sanitizer_removes_spam(self):
+        """Verify sanitize_manglish_response removes flower and sparkle spam"""
+        raw = "Hey there! Welcome to Juvelle 🌸 We specialize in tops ✨🌸"
+        cleaned = sanitize_manglish_response(raw)
+        self.assertNotIn("✨", cleaned)
+        self.assertNotIn("🌸", cleaned)
+
+    def test_07_mid_conversation_hi_does_not_reset_greeting(self):
+        """Verify saying 'hi' in an active ongoing session does not re-introduce the brand"""
+        sess_id = f"test_user_active_{int(time.time())}"
+        
+        # Turn 1: Initial question
+        resp1 = self.client.post(
+            "/webhook/instagram-test",
+            json={"chatInput": "Do you have tops for office?", "sessionId": sess_id}
+        )
+        self.assertEqual(resp1.status_code, 200)
+        
+        # Turn 2: User says "hi" mid-conversation
+        resp2 = self.client.post(
+            "/webhook/instagram-test",
+            json={"chatInput": "hi", "sessionId": sess_id}
+        )
+        self.assertEqual(resp2.status_code, 200)
+        reply2 = resp2.json()["output"][0]
+        
+        # It must NOT return the full first-time onboarding introduction
+        self.assertNotIn("Welcome to Juvelle", reply2)
+        self.assertIn("Hey", reply2)
+
+    def test_08_no_photo_send_offer(self):
+        """Verify the bot does NOT offer to send photos or ask 'photo send cheyyatte?'"""
+        sess_id = f"test_user_photo_{int(time.time())}"
+        
+        resp = self.client.post(
+            "/webhook/instagram-test",
+            json={"chatInput": "kanikku", "sessionId": sess_id}
+        )
+        self.assertEqual(resp.status_code, 200)
+        reply = " ".join(resp.json()["output"])
+        self.assertNotIn("photo send cheyyatte", reply.lower())
+        self.assertNotIn("✨", reply)
+        self.assertNotIn("🌸", reply)
 
 if __name__ == "__main__":
     unittest.main()

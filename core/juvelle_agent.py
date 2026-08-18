@@ -18,6 +18,11 @@ CANDIDATE_MODELS = [
     "gemini-3.5-flash"
 ]
 
+GREETING_WORDS = {
+    "hi", "hello", "hey", "hai", "helo", "hlo", "haii", "hii", "hiii",
+    "yo", "good morning", "good evening", "good afternoon"
+}
+
 def get_genai_client() -> Optional[genai.Client]:
     """Dynamically resolves and returns an authenticated Google GenAI client."""
     api_key = os.getenv("GEMINI_API_KEY")
@@ -41,24 +46,36 @@ def get_genai_client() -> Optional[genai.Client]:
 JUVELLE_SYSTEM_PROMPT = """You are the friendly, professional, and helpful Customer Support AI for Juvelle, a boutique women's fashion brand in Kerala.
 
 # Core Behavioral Guidelines:
-1. Be Concise & Human: Keep replies to 1-2 crisp sentences. Do NOT dump long paragraphs or unnecessary information.
-2. Emoji Restraint: Use at most 0 to 1 subtle emoji (e.g. ✨ or 🌸). Never spam emojis.
-3. Natural Conversational Tone: Talk like a polite, modern sales coordinator on Instagram DMs. Avoid textbook, stiff, or robotic phrasing.
+1. Be Concise & Direct: Keep replies to 1-2 crisp sentences. Provide immediate answers with product details and prices.
+2. Zero Emoji Default: Do NOT spam emojis (such as ✨, 🌸, etc.). Use standard clean punctuation. Only use an emoji on rare occasions if critical for clarity or warmth.
+3. Natural Conversational Tone: Talk like a polite, professional sales coordinator on Instagram DMs. Avoid textbook, stiff, or robotic phrasing.
 
 # Session & Greeting Lifecycle Rules:
-- FIRST CONTACT (New customer turn 1): Give a warm, branded introductory welcome (e.g., "Hey there! Welcome to Juvelle 🌸 We specialize in daily & office wear Churidar tops. How can I help you today? ✨").
-- RETURNING CUSTOMER (Resuming conversation after inactivity > 30 mins): Give a warm re-engagement greeting (e.g., "Hey again! Welcome back to Juvelle ✨ How can I help you today?").
-- ACTIVE ONGOING CONVERSATION (< 30 mins since last message): NEVER repeat "Welcome to Juvelle" or deliver a company intro! Answer the customer's specific question directly and politely. If the customer just says "hi/hey" mid-chat, give a quick casual reply (e.g., "Hey! Yes, tell me? ✨" or "Hey! Enthaanu nokkunnath? ✨").
+- FIRST CONTACT (New customer turn 1): Give a warm, branded introductory welcome (e.g., "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?").
+- RETURNING CUSTOMER (Resuming conversation after inactivity > 3 hours): Give a warm re-engagement greeting (e.g., "Hey again! Welcome back to Juvelle. How can I help you today?").
+- ACTIVE ONGOING CONVERSATION (< 3 hours since last message): NEVER repeat "Welcome to Juvelle" or deliver a company intro! Jump straight into answering their question directly. If the customer just says "hi/hey/hello" mid-chat, give a quick casual reply (e.g., "Hey! Parayuu, enganeya help cheyyendathu?" or "Hey! Yes, tell me, how can I help?").
+
+# Image & Catalog Rules (STRICT & CRITICAL):
+- Image/photo sending is NOT currently available in this chat.
+- NEVER ask the customer "photo send cheyyatte?" or offer to send photos/images!
+- If a customer asks to see designs/photos/collections (e.g., "kanikku", "show me photos", "images undo", "designs kanikku"):
+  - Directly explain our collection: We offer pure breathable cotton tops for daily wear and premium soft rayon tops for office wear (₹399 to ₹899, sizes S to XXL).
+  - Inform them politely: "Nammalude latest collection photos Instagram page posts and highlightsil kaanaam. Ishtappetta top inte screenshot ivide send cheythaal order cheyyaam!" (or in English: "You can view our latest designs on our Instagram page posts and highlights. Please send a screenshot of any top you like here to place your order!").
+
+# Conversation Pacing & Direct Answers (STRICT):
+- Do NOT interrogate the customer with multiple back-to-back qualifying questions (e.g. "cotton or rayon?", "which color?", "daily or office?").
+- When a customer asks for a category (like daily wear), immediately share the product details, fabric, and price range, and explain how to order.
+- Ask at most ONE simple closing question only when strictly necessary (e.g. asking for their size: "Ethu size aanu nokkunnath?").
 
 # Strict Manglish & Language Rules (CRITICAL):
-- PURE SCRIPT ONLY: When speaking in Manglish (Malayalam in English letters), use ONLY 100% English alphabet letters. NEVER mix Malayalam script characters (e.g. േണ്ട, ്, ം) inside English words.
+- PURE SCRIPT ONLY: When speaking in Manglish (Malayalam in English letters), use ONLY 100% English alphabet letters. NEVER mix Malayalam script characters (e.g. ക്കേണ്ട, ്, ം) inside English words.
 - NO HYPHENS (-): Real humans never type hyphens attached to words in chat.
   - WRONG: Juvelle-te, Kerala-il, delivery-kku, order-inte, brand-nte, available-aanu
   - RIGHT: Juvelle inte, Kerala yil (or Keralathil), deliverykku, order cheyyan, brand inte, available aanu
 - POSSESSIVE: Always use 'inte' (e.g. "Juvelle inte"), NEVER use "-te" or "Juvelle-te".
 - NATURAL HUMAN PHRASING:
-  - Instead of robotic "Enikku enthu sahayam aanu cheyyendathu?", use natural phrasing like "Enthaanu nokkunnath? ✨", "Enganeya help cheyyendath? ✨", or "Enthelum models kaanikkatte? ✨".
-  - If asked if you are a human/owner (e.g., "sahil aano?"): "Illa, njan Juvelle inte AI assistant aanu! Enthaanu nokkunnath? ✨"
+  - Instead of robotic "Enikku enthu sahayam aanu cheyyendathu?", use natural phrasing like "Enthaanu nokkunnath?", "Enganeya help cheyyendath?", or "Ethu size aanu vendath?".
+  - If asked if you are a human/owner (e.g., "sahil aano?"): "Illa, njan Juvelle inte AI assistant aanu! Enthaanu nokkunnath?"
 
 # Language Mirroring:
 - Manglish Customer -> Natural, polite Manglish response.
@@ -66,10 +83,10 @@ JUVELLE_SYSTEM_PROMPT = """You are the friendly, professional, and helpful Custo
 - English Customer -> Clear, professional English response.
 
 # Brand Facts:
-- Specialty: Exclusively women's Churidar tops (pure cotton & soft rayon blends, ₹399 to ₹899).
+- Specialty: Exclusively women's Churidar tops (pure cotton & soft rayon blends, ₹399 to ₹899, sizes S to XXL).
 - Exclusions: No sarees, frocks, jeans, t-shirts, kids wear, or men's wear.
 - Shipping: KERALA ONLY via Delhivery (2-3 business days, ₹50 standard shipping). Orders outside Kerala are politely declined.
-- Ordering & Payment: Direct chat ordering (screenshot + size). 100% online advance payment (UPI/GPay/PhonePe/Bank Transfer). No Cash on Delivery (COD).
+- Ordering & Payment: Direct chat ordering (screenshot from Instagram page + size). 100% online advance payment (UPI/GPay/PhonePe/Bank Transfer). No Cash on Delivery (COD).
 - No Website: Everything is handled directly in chat.
 """
 
@@ -128,22 +145,25 @@ MALAYALAM_UNICODE_MAP = {
 def sanitize_manglish_response(text: str) -> str:
     """
     Post-processes and cleans Manglish responses to eliminate character leakage,
-    remove unnatural hyphens, and enforce natural human chat phrasing.
+    remove unnatural hyphens, strip emoji spam, and enforce natural human chat phrasing.
     """
     if not text:
         return text
 
+    # 1. Strip unwanted decorative emoji spam (e.g. ✨, 🌸, 💫, 🌟)
+    text = re.sub(r'[\u2728\U0001F338\U0001F4AB\U0001F31F\U0001F33C\U0001F389]+', '', text)
+
     latin_count = len(re.findall(r'[a-zA-Z]', text))
     malayalam_count = len(re.findall(r'[\u0D00-\u0D7F]', text))
 
-    # 1. Script Bleed Removal: If response is mostly Latin Manglish, fix any rogue Malayalam unicode
+    # 2. Script Bleed Removal: If response is mostly Latin Manglish, fix any rogue Malayalam unicode
     if latin_count > 0 and latin_count >= malayalam_count:
         for mal_char, eng_rep in sorted(MALAYALAM_UNICODE_MAP.items(), key=lambda x: len(x[0]), reverse=True):
             text = text.replace(mal_char, eng_rep)
         # Strip any lingering unmapped unicode chars
         text = re.sub(r'[\u0D00-\u0D7F]', '', text)
 
-    # 2. Fix unnatural hyphens
+    # 3. Fix unnatural hyphens
     # Brand/proper noun possessives: 'Juvelle-te' -> 'Juvelle inte'
     text = re.sub(r'\b([A-Za-z]+)-(te|nte|inte)\b', r'\1 inte', text, flags=re.IGNORECASE)
     # Location/noun locatives: 'Kerala-il' -> 'Kerala yil'
@@ -156,7 +176,7 @@ def sanitize_manglish_response(text: str) -> str:
     # Generic mid-word hyphens
     text = re.sub(r'([A-Za-z]{2,})-([A-Za-z]{2,})', r'\1 \2', text)
 
-    # 3. Clean up double spaces or awkward punctuation
+    # 4. Clean up double spaces or awkward punctuation
     text = re.sub(r' +', ' ', text).strip()
     return text
 
@@ -170,41 +190,51 @@ def generate_live_neural_reply(
     Executes live neural AI generation using Google Gemini model with session lifecycle guidance,
     customer CRM context, language mirroring, candidate cascade, and RAG grounding.
     """
-    # 1. Retrieve grounded knowledge chunks from Qdrant Cloud / BM25
+    # 1. Check for mid-conversation casual greeting intercept
+    state = lifecycle_info.get("lifecycle_state", "first_contact") if lifecycle_info else "first_contact"
+    turn_num = lifecycle_info.get("turn_count", 1) if lifecycle_info else 1
+    cleaned_input = chat_input.lower().strip().rstrip("!.,? ")
+
+    if state == "active_ongoing" and cleaned_input in GREETING_WORDS:
+        # User greeted mid-conversation -> Return a natural short continuation cue
+        # Check if conversation history is primarily Manglish or English
+        recent_text = " ".join([t.get("content", "") for t in history[-2:]]) if history else ""
+        if any(w in recent_text.lower() for w in ["nammal", "nokkunnath", "kaanikku", "undo", "athe", "aanu", "parayuu"]):
+            return "Hey! Parayuu, enganeya help cheyyendathu?"
+        return "Hey! Yes, tell me, how can I help you today?"
+
+    # 2. Retrieve grounded knowledge chunks from Qdrant Cloud / BM25
     retrieved_chunks = retrieve_hybrid_context(chat_input, top_k=2)
     rag_context = ""
     if retrieved_chunks:
         rag_context = "\nRelevant Juvelle Brand Knowledge:\n" + "\n".join([f"- {c['content']}" for c in retrieved_chunks])
 
-    # 2. Formulate Session Lifecycle & Greeting Directive
-    state = lifecycle_info.get("lifecycle_state", "first_contact") if lifecycle_info else "first_contact"
-    turn_num = lifecycle_info.get("turn_count", 1) if lifecycle_info else 1
-
+    # 3. Formulate Session Lifecycle & Greeting Directive
     if state == "first_contact":
         lifecycle_directive = (
             "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet the customer warmly and introduce the brand "
-            "(e.g., 'Hey there! Welcome to Juvelle 🌸 We specialize in daily & office wear Churidar tops. How can I help you today? ✨')."
+            "(e.g., 'Hey there! Welcome to Juvelle. We specialize in daily & office wear Churidar tops. How can I help you today?')."
         )
     elif state == "returning_session":
         crm_size = crm_profile.get("preferred_size") if crm_profile else None
         size_hint = f" (Customer previously looked for size {crm_size})" if crm_size else ""
         lifecycle_directive = (
             f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
-            "You MUST start your reply by welcoming them back warmly (e.g., 'Welcome back to Juvelle! ✨' or 'Hey again! ✨') before answering their inquiry."
+            "Start your reply by welcoming them back warmly (e.g., 'Welcome back to Juvelle! How can I help you today?') before answering their inquiry."
         )
     else:
         lifecycle_directive = (
             f"SESSION DIRECTIVE: ACTIVE ONGOING CONVERSATION (Turn {turn_num}, < 3 hrs since last message). "
-            "DO NOT repeat 'Welcome to Juvelle' or give a brand intro! Jump straight into answering their question naturally and directly. "
-            "If they say a casual greeting like 'hi/hey', reply briefly like 'Hey! Yes, tell me? ✨'."
+            "DO NOT repeat 'Welcome to Juvelle' or deliver a brand intro! Jump straight into answering their question naturally and directly. "
+            "If they say a casual greeting like 'hi/hey', reply briefly with a continuation like 'Hey! Parayuu, enganeya help cheyyendathu?'."
         )
 
-    # 3. CRM Context Snippet
+    # 4. CRM Context Snippet
     crm_context = ""
     if crm_profile and (crm_profile.get("preferred_size") or crm_profile.get("location") or crm_profile.get("stage")):
         crm_context = f"\nCustomer CRM Profile: Size={crm_profile.get('preferred_size', 'Unknown')}, Location={crm_profile.get('location', 'Unknown')}, Stage={crm_profile.get('stage', 'New Lead')}\n"
 
-    # 4. Build conversation prompt
+    # 5. Build conversation prompt
     dialogue_history = ""
     if history:
         for turn in history[-4:]:
@@ -221,7 +251,7 @@ def generate_live_neural_reply(
         f"Juvelle AI:"
     )
 
-    # 5. Call candidate neural models with rapid cascade
+    # 6. Call candidate neural models with rapid cascade
     client = get_genai_client()
     if client:
         for model_name in CANDIDATE_MODELS:
@@ -239,10 +269,10 @@ def generate_live_neural_reply(
 
     # Fallback based on session lifecycle
     if state == "first_contact":
-        return "Hey there! Welcome to Juvelle 🌸 We specialize in daily & office wear Churidar tops. How can I help you today? ✨"
+        return "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
     elif state == "returning_session":
-        return "Welcome back to Juvelle! ✨ How can I assist you today?"
-    return "Sure! How can I help you find something special today? ✨"
+        return "Welcome back to Juvelle! How can I assist you today?"
+    return "Sure! How can I help you find something special today?"
 
 def generate_juvelle_response(
     chat_input: str,
