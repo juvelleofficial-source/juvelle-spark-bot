@@ -1,0 +1,522 @@
+{
+    "name": "Juvelle Instagram Bot (Batch Processing)",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "ed03d435-639b-4018-b0be-829891736771",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2.1,
+            "position": [
+                -2112,
+                1168
+            ],
+            "id": "71e42fdc-11d0-4c5c-8831-9e17d5f3a0be",
+            "name": "Webhook",
+            "webhookId": "ed03d435-639b-4018-b0be-829891736771"
+        },
+        {
+            "parameters": {
+                "tableId": "messages",
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "message_content",
+                            "fieldValue": "={{ $json.message }}"
+                        },
+                        {
+                            "fieldId": "message_sender",
+                            "fieldValue": "={{ $json.id }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                -1792,
+                1168
+            ],
+            "id": "722201b1-0148-4bf4-be98-a74afd035c20",
+            "name": "Log Message",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "kiZRGxJbAee5enPi",
+                    "name": "Supabase account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "amount": 5,
+                "unit": "seconds"
+            },
+            "type": "n8n-nodes-base.wait",
+            "typeVersion": 1,
+            "position": [
+                -1568,
+                1168
+            ],
+            "id": "a1fd84b1-3cfa-4c75-84ea-16327f617fcd",
+            "name": "Wait 5s",
+            "webhookId": "87b2cb8c-af98-4c32-801f-f9773919477e"
+        },
+        {
+            "parameters": {
+                "operation": "getAll",
+                "tableId": "messages",
+                "returnAll": true,
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "message_sender",
+                            "condition": "eq",
+                            "keyValue": "={{ $json.message_sender }}"
+                        },
+                        {
+                            "keyName": "message_status",
+                            "condition": "eq",
+                            "keyValue": "batch"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                -1376,
+                1168
+            ],
+            "id": "7bd82fe2-4748-44d4-a61c-32e64f300c97",
+            "name": "Fetch Batch Messages",
+            "alwaysOutputData": true,
+            "credentials": {
+                "supabaseApi": {
+                    "id": "kiZRGxJbAee5enPi",
+                    "name": "Supabase account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "caseSensitive": true,
+                        "leftValue": "",
+                        "typeValidation": "strict",
+                        "version": 1
+                    },
+                    "conditions": [
+                        {
+                            "id": "14ea4e2c-bb91-46a6-98a4-395ab38ef8c3",
+                            "leftValue": "={{ $json.id }}",
+                            "rightValue": null,
+                            "operator": {
+                                "type": "number",
+                                "operation": "exists",
+                                "singleValue": true
+                            }
+                        }
+                    ],
+                    "combinator": "and"
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                -1216,
+                1168
+            ],
+            "id": "c6f0e453-d771-46cb-b1b6-5153f3d68200",
+            "name": "Has Messages?"
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "=[]",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1,
+            "position": [
+                -1056,
+                1328
+            ],
+            "id": "a7989242-bd63-4a33-8192-a9c5047bce51",
+            "name": "Respond Empty"
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "tableId": "messages",
+                "filters": {
+                    "conditions": [
+                        {
+                            "keyName": "id",
+                            "condition": "eq",
+                            "keyValue": "={{ $json.id }}"
+                        }
+                    ]
+                },
+                "fieldsUi": {
+                    "fieldValues": [
+                        {
+                            "fieldId": "message_status",
+                            "fieldValue": "processed"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.supabase",
+            "typeVersion": 1,
+            "position": [
+                -1056,
+                1008
+            ],
+            "id": "7ff97e8b-4a62-4435-8860-094a5c461e54",
+            "name": "Mark Processed",
+            "credentials": {
+                "supabaseApi": {
+                    "id": "kiZRGxJbAee5enPi",
+                    "name": "Supabase account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "jsCode": "// 1. Get all messages and IDs from the input\nconst allItems = $input.all();\n\n// Add safety check/filter\nconst messages = allItems.map(item => item.json.message_content).filter(Boolean);\nconst ids = allItems.map(item => item.json.id);\n\n// 2. Flatten them into a single string\nconst flattenedMessage = messages.join(', '); \nconst idString = ids.join(', ');\n\n// 3. Extract the sender safely\nconst sender = allItems.length > 0 ? allItems[0].json.message_sender : null;\n\n// 4. Return the new object\nreturn {\n  flattenedMessage,\n  idString,\n  sender,\n  count: allItems.length\n};"
+            },
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -832,
+                1168
+            ],
+            "id": "b5a37671-9f49-4594-b640-f575bdf2228f",
+            "name": "Flatten Messages"
+        },
+        {
+            "parameters": {
+                "sessionIdType": "customKey",
+                "sessionKey": "={{ $('Edit Fields').item.json.id }}",
+                "contextWindowLength": 50
+            },
+            "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+            "typeVersion": 1.3,
+            "position": [
+                -640,
+                1408
+            ],
+            "id": "265d5379-f066-406b-ae93-279c4242f756",
+            "name": "Simple Memory"
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+            "typeVersion": 1,
+            "position": [
+                -768,
+                1408
+            ],
+            "id": "0fbc9806-540f-4ed9-80cd-3238aab541c8",
+            "name": "Google Gemini Chat Model",
+            "credentials": {
+                "googlePalmApi": {
+                    "id": "os25WxeLpzZlPy1u",
+                    "name": "Google Gemini(PaLM) Api account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "mode": "retrieve-as-tool",
+                "toolDescription": "You have access to a vector database named 'Juvelle-Knowledge'. This database is the source of truth for the brand. It documents that Juvelle is a Kerala-exclusive brand selling affordable premium churidar tops. It explicitly states that there is no Cash on Delivery (COD) and no website currently. Always check this database before answering questions about shipping times, courier partners (Delhivery), or fabric quality to ensure you do not hallucinate incorrect policies.",
+                "pineconeIndex": {
+                    "__rl": true,
+                    "value": "gemini-memory",
+                    "mode": "list",
+                    "cachedResultName": "gemini-memory"
+                },
+                "options": {}
+            },
+            "type": "@n8n/n8n-nodes-langchain.vectorStorePinecone",
+            "typeVersion": 1.3,
+            "position": [
+                -496,
+                1408
+            ],
+            "id": "56d46855-ad22-461a-ad28-0ba2d7c73b09",
+            "name": "Pinecone Vector Store",
+            "credentials": {
+                "pineconeApi": {
+                    "id": "FngJKaw8BDPNyFXo",
+                    "name": "PineconeApi account"
+                }
+            }
+        },
+        {
+            "parameters": {},
+            "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+            "typeVersion": 1,
+            "position": [
+                -496,
+                1568
+            ],
+            "id": "6bc379c9-f8f7-4cf6-b483-30d8576f4d2f",
+            "name": "Embeddings Google Gemini",
+            "credentials": {
+                "googlePalmApi": {
+                    "id": "os25WxeLpzZlPy1u",
+                    "name": "Google Gemini(PaLM) Api account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "promptType": "define",
+                "text": "={{ $json.flattenedMessage }}",
+                "options": {
+                    "systemMessage": "SYSTEM ROLE & PERSONA\nYou are \"Juvelle Support,\" the friendly, professional, and elegant customer service assistant for a women's clothing brand named \"Juvelle.\"\nYour tone is: Warm, Polite, Helpful, and \"Quietly Confident.\" You are NOT salesy or pushy. You speak like a high-end boutique owner, not a bot.\n\nKEY BUSINESS FACTS (DO NOT HALLUCINATE)\nProduct: We sell only Churidar tops (daily wear/office wear).\nLocation: We deliver to KERALA ONLY. (If a customer asks for outside Kerala, politely say no).\nCourier: We use \"Delhivery\" courier service.\nWebsite: We do NOT have a website yet.\nOrdering Process: Manual. Customers must send a screenshot of the dress to confirm availability.\nUSP: \"Premium quality fabric at the most affordable price.\" (Emphasize that they won't find this quality cheaper).\nPayment: Online payment (GPay/UPI) or Bank Transfer. (If asked about COD, say: \"Currently we accept online payments to ensure faster dispatch\").\n\nGUIDELINES FOR RESPONSES\nShort & Sweet: People on Instagram/WhatsApp scan text. Keep replies under 3-4 sentences when possible.\nEmojis: Use sparingly. Use ✨, 🧵, or 🌸. Avoid \"loud\" emojis like 🚨, 🤑, or 🔥.\nPrice Inquiries: Never hide the price. If the user provides a product, state the price clearly + shipping cost.\nOut of Stock: If a user asks for something we don't have, suggest checking the catalogue for similar items.\n\nSTANDARD RESPONSE TEMPLATES\nScenario 1: \"How much is this?\"\n\"Hello! ✨ This beautiful piece is priced at ₹[Insert Price]. It’s made from [Insert Fabric] which is perfect for daily wear. Would you like to know the available sizes?\"\n\nScenario 2: \"How do I order?\"\n\"Ordering is simple! 🌸\nSend us a screenshot of the top you like.\nLet us know your size.\nWe will confirm availability and share payment details.\nOnce paid, we ship it the next day via Delhivery!\"\n\nScenario 3: \"Do you ship to Bangalore/Mumbai/Dubai?\"\n\"Thank you for loving our designs! ❤️ Currently, Juvelle delivers exclusively within Kerala. We hope to expand to other cities in the future. Please follow us for updates!\"\n\nCRITICAL OUTPUT FORMATTING:\nYou must output a strictly valid JSON object. Do not output plain text or markdown code blocks.\nThe JSON must follow this structure:\n{\n  \"messages\": [\"string 1\", \"string 2\"]\n}\nSplit your response into multiple natural messages if appropriate. For example, answer the question in one message, and ask a follow-up in the second."
+                }
+            },
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 1.6,
+            "position": [
+                -608,
+                1168
+            ],
+            "id": "ac9367b6-6928-4cf0-b096-dd1ce09fbe0e",
+            "name": "AI Agent"
+        },
+        {
+            "parameters": {
+                "jsCode": "const output = $json.output;\nlet messages = [];\ntry {\n  // Clean up potential markdown code blocks if the AI adds them\n  const cleanOutput = output.replace(/```json/g, '').replace(/```/g, '').trim();\n  const parsed = JSON.parse(cleanOutput);\n  \n  if (parsed.messages && Array.isArray(parsed.messages)) {\n    messages = parsed.messages;\n  } else {\n    messages = [cleanOutput];\n  }\n} catch (e) {\n  // Fallback if not JSON\n  messages = [output];\n}\n\n// We return the array directly as the output 'json' property for the Webhook to serialize\nreturn {\n  json: {\n    output: messages\n  }\n};"
+            },
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                -288,
+                1168
+            ],
+            "id": "f6fa9474-2f5a-468a-9986-99e8652c5824",
+            "name": "Parse Response"
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ { \"output\": $json.output } }}",
+                "options": {}
+            },
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.5,
+            "position": [
+                -64,
+                1168
+            ],
+            "id": "caf1fb81-10dd-427b-80b2-3e7af08b288d",
+            "name": "Respond to Webhook"
+        },
+        {
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "23e44d56-852f-4618-99c5-af0b73a1b1da",
+                            "name": "message",
+                            "value": "={{ $json.body.chatInput }}",
+                            "type": "string"
+                        },
+                        {
+                            "id": "7bf33a8c-eb09-44a0-a351-b1ca8cebeb34",
+                            "name": "id",
+                            "value": "={{ $json.body.sessionId }}",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                -1936,
+                1168
+            ],
+            "id": "05369990-6111-4de8-8fcf-691b4f28b0f6",
+            "name": "Edit Fields"
+        }
+    ],
+    "connections": {
+        "Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Edit Fields",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log Message": {
+            "main": [
+                [
+                    {
+                        "node": "Wait 5s",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Wait 5s": {
+            "main": [
+                [
+                    {
+                        "node": "Fetch Batch Messages",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Fetch Batch Messages": {
+            "main": [
+                [
+                    {
+                        "node": "Has Messages?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has Messages?": {
+            "main": [
+                [
+                    {
+                        "node": "Flatten Messages",
+                        "type": "main",
+                        "index": 0
+                    },
+                    {
+                        "node": "Mark Processed",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Respond Empty",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Mark Processed": {
+            "main": [
+                []
+            ]
+        },
+        "Flatten Messages": {
+            "main": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Simple Memory": {
+            "ai_memory": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_memory",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Gemini Chat Model": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Pinecone Vector Store": {
+            "ai_tool": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_tool",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Embeddings Google Gemini": {
+            "ai_embedding": [
+                [
+                    {
+                        "node": "Pinecone Vector Store",
+                        "type": "ai_embedding",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Agent": {
+            "main": [
+                [
+                    {
+                        "node": "Parse Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse Response": {
+            "main": [
+                [
+                    {
+                        "node": "Respond to Webhook",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Edit Fields": {
+            "main": [
+                [
+                    {
+                        "node": "Log Message",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "pinData": {},
+    "meta": {
+        "templateCredsSetupCompleted": true,
+        "instanceId": "b3397d01fc3f7f98f766d57a4a16fe0d8202c150314ef876ac0695d14a832ef9"
+    }
+}

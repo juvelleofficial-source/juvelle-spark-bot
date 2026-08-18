@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Instagram Direct - Juvelle AI</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Connection Health Overlay -->
+        <div class="connection-overlay" id="connOverlay">
+            <div class="conn-logo-container">
+                <div class="conn-pulse-ring"></div>
+                <img src="https://ui-avatars.com/api/?name=Juvelle&background=000&color=fff" alt="Juvelle AI" class="conn-logo">
+            </div>
+            <div class="conn-title">Juvelle AI Neural Engine</div>
+            <div class="conn-status" id="connStatus">
+                <span class="conn-spinner"></span>
+                <span>Connecting to local backend...</span>
+            </div>
+            <div class="conn-offline-box hidden" id="connOfflineBox">
+                <strong>Backend Server is Offline</strong><br>
+                Please run <code>Start Juvelle Bot.bat</code> on your Desktop, or click Retry below.
+            </div>
+            <button class="conn-retry-btn hidden" id="connRetryBtn">🔄 Retry Connection</button>
+        </div>
+
+        <!-- Header -->
+        <header class="chat-header">
+            <div class="header-left">
+                <i class="fa-solid fa-arrow-left back-icon"></i>
+                <div class="profile-pic-container">
+                    <img src="https://ui-avatars.com/api/?name=Juvelle&background=000&color=fff" alt="Profile"
+                        class="header-profile-pic">
+                    <div class="active-dot" id="headerActiveDot"></div>
+                </div>
+                <div class="header-info">
+                    <span class="username">Juvelle Support <i
+                            class="fa-solid fa-circle-check verified-badge"></i></span>
+                    <span class="status-text" id="headerStatusText">Active now</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <i class="fa-solid fa-phone header-call-btn" id="callBtn" title="Start Live Audio Call"></i>
+                <div class="toggle-container">
+                    <span class="mode-label" id="modeLabel">Test</span>
+                    <label class="switch">
+                        <input type="checkbox" id="modeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <i class="fa-solid fa-rotate-right" id="resetChatBtn" title="Start New Conversation"></i>
+                <i class="fa-solid fa-circle-info" id="settingsBtn" title="Debug Settings"></i>
+            </div>
+        </header>
+
+        <!-- Chat Area -->
+        <div class="chat-area" id="chatArea">
+            <div class="time-separator">Juvelle AI Direct Support</div>
+
+            <!-- Loading Indicator -->
+            <div class="typing-indicator hidden" id="typingIndicator">
+                <img src="https://ui-avatars.com/api/?name=Juvelle&background=000&color=fff"
+                    class="message-avatar mini">
+                <div class="typing-dots">
+                    <span></span><span></span><span></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <footer class="chat-input-area">
+            <div class="camera-btn-container">
+                <div class="input-icon-btn camera-btn">
+                    <i class="fa-solid fa-camera"></i>
+                </div>
+            </div>
+
+            <div class="input-wrapper">
+                <input type="text" id="messageInput" placeholder="Message..." autocomplete="off">
+                <label for="fileInput" class="input-icon-btn attach-btn">
+                    <i class="fa-regular fa-image"></i>
+                </label>
+                <input type="file" id="fileInput" multiple accept="image/*,video/*">
+
+                <div class="input-icon-btn sticker-btn">
+                    <i class="fa-regular fa-face-smile"></i>
+                </div>
+            </div>
+
+            <div class="action-buttons">
+                <!-- Mic Button (Show when input empty) -->
+                <div id="micBtn" class="input-icon-btn mic-btn">
+                    <i class="fa-solid fa-microphone"></i>
+                </div>
+                <!-- Send Button (Show when input has text) -->
+                <div id="sendBtn" class="input-icon-btn send-text-btn hidden">
+                    Send
+                </div>
+            </div>
+        </footer>
+
+        <!-- Settings / Debug Modal -->
+        <div class="modal hidden" id="settingsModal">
+            <div class="modal-content">
+                <h3>Debug Settings</h3>
+                <div class="setting-item">
+                    <label>Webhook URL</label>
+                    <input type="text" id="webhookUrlInput" value="">
+                </div>
+                <div class="setting-item">
+                    <label>Burst Mode (Count)</label>
+                    <input type="number" id="burstCount" value="5">
+                </div>
+                <div class="modal-actions">
+                    <button id="sendBurstBtn" class="action-btn warning">🔥 Fire Burst Texts</button>
+                    <button id="saveSettingsBtn" class="action-btn primary">Save</button>
+                    <button id="closeSettingsBtn" class="action-btn">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Voice Recording Overlay -->
+        <div class="voice-overlay hidden" id="voiceOverlay">
+            <div class="voice-waves">
+                <div class="wave"></div>
+                <div class="wave"></div>
+                <div class="wave"></div>
+            </div>
+            <div class="voice-time" id="voiceTimer">0:00</div>
+            <div class="voice-instruction">Release to send, swipe to cancel</div>
+            <div class="voice-controls">
+                <div class="voice-btn active">
+                    <i class="fa-solid fa-microphone"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Instagram Live Audio Call Overlay -->
+        <div class="call-overlay hidden" id="callOverlay">
+            <div class="call-top-bar">
+                <span class="call-badge"><i class="fa-solid fa-lock"></i> End-to-End Encrypted</span>
+            </div>
+            <div class="call-body">
+                <div class="call-avatar-wrapper">
+                    <div class="call-pulse-ring ring-1"></div>
+                    <div class="call-pulse-ring ring-2"></div>
+                    <div class="call-pulse-ring ring-3"></div>
+                    <img src="https://ui-avatars.com/api/?name=Juvelle&background=000&color=fff" alt="Juvelle AI" class="call-avatar">
+                </div>
+                <div class="call-user-title">Juvelle Support</div>
+                <div class="call-status-indicator" id="callStatusText">Calling...</div>
+                <div class="call-timer-badge hidden" id="callTimer">00:00</div>
+                
+                <!-- Live Real-Time Captions Box -->
+                <div class="call-captions-box" id="callCaptionsBox">
+                    <div class="caption-label"><i class="fa-solid fa-closed-captioning"></i> Live Subtitles</div>
+                    <div class="caption-content" id="callCaptionText">Connecting to Juvelle Live Assistant...</div>
+                </div>
+            </div>
+            <div class="call-bottom-controls">
+                <button class="call-ctrl-btn" id="callMuteBtn" title="Mute Microphone">
+                    <i class="fa-solid fa-microphone"></i>
+                </button>
+                <button class="call-ctrl-btn call-hangup-btn" id="callEndBtn" title="End Call">
+                    <i class="fa-solid fa-phone-slash"></i>
+                </button>
+                <button class="call-ctrl-btn" id="callSpeakerBtn" title="Speaker">
+                    <i class="fa-solid fa-volume-high"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

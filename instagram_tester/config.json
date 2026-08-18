@@ -1,0 +1,13 @@
+{
+    "webhook_url": "http://127.0.0.1:8000/webhook/instagram-test",
+    "test_mode": "burst",
+    "burst_count": 5,
+    "user_profile": {
+        "username": "tester_01",
+        "avatar_url": "https://ui-avatars.com/api/?name=User&background=random"
+    },
+    "bot_profile": {
+        "username": "Juvelle Support",
+        "avatar_url": "https://ui-avatars.com/api/?name=Juvelle&background=000&color=fff"
+    }
+}

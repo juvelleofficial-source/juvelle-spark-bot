@@ -257,6 +257,78 @@ async def instagram_webhook_handler(request: Request):
         logger.error(f"Error handling instagram test webhook: {e}")
         return {"output": ["Thank you for reaching out to Juvelle! Please let us know what top you are looking for."]}
 
+from fastapi import UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from core.audio_processor import process_voice_message
+from core.live_call_manager import live_call_manager
+
+@app.post("/api/voice-message")
+async def handle_voice_message(
+    audio: UploadFile = File(...),
+    sessionId: str = Form("default_user"),
+    userName: Optional[str] = Form(None)
+):
+    """
+    Direct voice message intake:
+    Transcribes audio using Gemini Multimodal Audio, queries Qdrant RAG,
+    and returns textual response (+ optional TTS voice note).
+    """
+    try:
+        audio_bytes = await audio.read()
+        mime_type = audio.content_type or "audio/webm"
+        
+        result = process_voice_message(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            session_id=sessionId,
+            customer_name=userName
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Voice message processing failed: {e}")
+        return {
+            "transcript": "Voice message received",
+            "detected_language": "english",
+            "reply_text": "Thank you for reaching out to Juvelle! How can I assist you with our Churidar tops today?",
+            "audio_data": None,
+            "has_audio_reply": False,
+            "session_id": sessionId
+        }
+
+@app.websocket("/api/live-call/{session_id}")
+async def live_call_websocket_endpoint(websocket: WebSocket, session_id: str):
+    """
+    Full-duplex real-time live audio call endpoint supporting multi-session concurrency.
+    """
+    session = await live_call_manager.connect(session_id, websocket)
+    try:
+        while True:
+            # Receive either binary audio data or text/JSON control frames
+            message = await websocket.receive()
+            if "bytes" in message and message["bytes"]:
+                audio_bytes = message["bytes"]
+                await session.handle_user_audio(audio_bytes, mime_type="audio/webm")
+            elif "text" in message and message["text"]:
+                try:
+                    payload = json.loads(message["text"])
+                    action = payload.get("action")
+                    if action == "hangup" or action == "end_call":
+                        break
+                    elif action == "ping":
+                        await session.send_event("pong", {})
+                    elif action == "user_text":
+                        # Support hybrid text prompt inside live call
+                        text_msg = payload.get("text", "")
+                        if text_msg:
+                            await session.handle_user_audio(text_msg.encode('utf-8'), mime_type="text/plain")
+                except Exception as ex:
+                    logger.debug(f"Live call frame parsing notice: {ex}")
+    except WebSocketDisconnect:
+        logger.info(f"Client disconnected from live call: {session_id}")
+    except Exception as e:
+        logger.error(f"Live call WebSocket error for {session_id}: {e}")
+    finally:
+        await live_call_manager.disconnect(session_id)
+
 @app.get("/")
 def serve_index():
     index_file = os.path.join(frontend_dir, "index.html")
@@ -264,3 +336,4 @@ def serve_index():
         with open(index_file, "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read())
     return HTMLResponse("<h1>Gemini Spark Custom MCP Server is running!</h1><p>MCP SSE Endpoint: <code>/mcp/sse</code></p>")
+

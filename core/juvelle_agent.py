@@ -451,3 +451,19 @@ def generate_juvelle_response(
         parts = [msg.strip() for msg in ai_reply.split("\n\n") if msg.strip()]
         return parts[:2]
     return [ai_reply.strip()]
+
+def generate_juvelle_reply(
+    customer_message: str,
+    session_id: str = "default_tester",
+    customer_name: Optional[str] = None
+) -> str:
+    """
+    Convenience wrapper returning a single clean string response for voice notes and live calls.
+    """
+    msgs = generate_juvelle_response(
+        chat_input=customer_message,
+        session_id=session_id,
+        user_id=customer_name or session_id
+    )
+    return " ".join(msgs)
+

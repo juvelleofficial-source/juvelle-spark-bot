@@ -22,7 +22,6 @@ def get_knowledge_documents() -> List[Dict[str, str]]:
         if docx_docs:
             logger.info(f"Loaded {len(docx_docs)} document sections directly from {docx_path}")
             return docx_docs
-
     # Fallback to default in-memory chunks
     return [
         {
@@ -73,6 +72,8 @@ def get_knowledge_documents() -> List[Dict[str, str]]:
             )
         }
     ]
+
+create_sample_documents = get_knowledge_documents
 
 def run_ingestion_pipeline(sample_docs: List[Dict[str, str]] = None, export_gcs: bool = False):
     """

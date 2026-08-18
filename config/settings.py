@@ -27,6 +27,8 @@ class Settings(BaseModel):
 
     # Pure Gemini Spark Architecture (Zero API Keys)
     SPARK_MCP_ENABLED: bool = True
+    GEMINI_FLASH_MODEL: str = "gemini-flash-lite-latest"
+    GEMINI_PRO_MODEL: str = "gemini-3.6-flash"
     
     # Qdrant Cloud Config (Permanent Free 1GB Cluster)
     QDRANT_URL: Optional[str] = os.getenv("QDRANT_URL")
