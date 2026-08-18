@@ -9,6 +9,11 @@ ENV/
 cloudflared.exe
 *.log
 *.tmp
+*.docx
+*.pdf
+*.zip
+data/*.db
 .tempmediaStorage/
 .user_uploaded/
 scratch/
+
