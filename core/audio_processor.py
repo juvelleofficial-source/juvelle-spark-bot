@@ -28,6 +28,29 @@ VOICE_REPLY_TRIGGERS = [
     "ayakkumo", "send voice", "voice il", "voice aayitt", "voiceil", "speak to me", "voice reply"
 ]
 
+UNIFIED_AUDIO_PROMPT = """
+You are the voice listener and support assistant for Juvelle, a premium women's Churidar tops boutique in Kerala.
+Listen to this customer voice note audio carefully.
+
+DOMAIN KNOWLEDGE & PHONETIC HINTS:
+- Products: Exclusively daily wear and office wear Churidar tops / kurtis (sizes XS to 4XL, prices ₹499 to ₹1,299).
+- We do NOT sell full sets, churidar bottoms, dupattas, or men's/kids wear.
+- Shipping & COD: Pan-India delivery available, Cash on Delivery (COD) supported across Kerala and major cities.
+- Store: Online store based in Kochi, Kerala.
+- Spoken Language: English, Malayalam, or colloquial Manglish (Malayalam written in English script).
+- Common phonetic terms: 'churidhar undo', 'kurti', 'ethraya', 'rate', 'price', 'kanikku', 'parayuu', 'daily wear', 'office wear', 'cash on delivery', 'cod', 'size', 'colour', 'stock'.
+
+INSTRUCTIONS:
+1. Accurately transcribe the spoken words. If spoken in Manglish, write natural Manglish. If spoken in English, write in English. If Malayalam, write in Malayalam script.
+2. Identify the language: 'english', 'manglish', or 'malayalam_script'.
+3. Formulate a warm, professional, concise Juvelle support reply (1-3 sentences) strictly in the detected language.
+
+OUTPUT FORMAT (Strictly format as):
+TRANSCRIPT: <transcribed text>
+LANGUAGE: <english|manglish|malayalam_script>
+REPLY: <juvelle customer support reply>
+"""
+
 def check_voice_reply_requested(text: str) -> bool:
     """Checks if the user explicitly asked for a voice message / audio note response."""
     if not text:
@@ -38,12 +61,10 @@ def check_voice_reply_requested(text: str) -> bool:
 def generate_tts_base64(text: str, language: str = "english") -> Optional[str]:
     """Generates an MP3 audio voice note using gTTS and returns base64 data URI."""
     try:
-        # Strip markdown symbols and greetings that don't sound natural in TTS
         clean_text = re.sub(r'[*#_`~]', '', text).strip()
         if not clean_text:
             return None
 
-        # Select language code: 'ml' for Malayalam script, 'en' with Indian accent for English/Manglish
         lang_code = 'en'
         tld = 'co.in'
         if language == "malayalam_script":
@@ -77,6 +98,8 @@ You are the voice listener for Juvelle Boutique customer support in Kerala.
 Listen to this customer voice note carefully and perform 2 tasks:
 1. Transcribe the spoken words EXACTLY as spoken. If spoken in Manglish (Malayalam words written in English letters like 'churidhar undo', 'price ethraya'), write the transcript in natural Manglish. If spoken in English, write in English. If spoken in Malayalam, write in Malayalam script.
 2. Identify the language ('english', 'manglish', or 'malayalam_script').
+
+Domain Vocabulary: Churidar tops, kurtis, daily wear, office wear, size XS to 4XL, cotton, rayon, silk, ₹499 to ₹1299, cash on delivery, ethraya, undo, kanikku, parayuu.
 
 Format your response strictly as:
 TRANSCRIPT: <exact transcribed text>
@@ -130,29 +153,73 @@ def process_voice_message(
     customer_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Unified pipeline for voice message intake:
-    1. Transcribe audio using Gemini Multimodal Audio.
-    2. Ground context via Qdrant Cloud RAG.
-    3. Generate brand-grounded conversational response.
-    4. Conditionally generate TTS voice note if user explicitly requested audio reply.
+    High-speed, accurate unified voice message pipeline:
+    1. Attempts fast single-pass multimodal audio reasoning with Gemini 2.0 Flash (~1.1s latency).
+    2. Falls back to 2-stage grounded RAG pipeline if needed.
+    3. Conditionally generates TTS voice reply if customer requested audio.
     """
     logger.info(f"Processing incoming voice message ({len(audio_bytes)} bytes, mime: {mime_type}) for session: {session_id}")
+    client = get_genai_client()
 
-    # 1. Transcribe audio
-    transcription_result = transcribe_audio_with_gemini(audio_bytes, mime_type=mime_type)
-    transcript = transcription_result["transcript"]
-    detected_lang = transcription_result["detected_language"]
+    transcript = None
+    detected_lang = "english"
+    reply_text = None
 
-    logger.info(f"Voice Transcription: '{transcript}' [Language: {detected_lang}]")
+    # Step 1: Attempt ultra-fast single-pass audio reasoning
+    if client:
+        for model_name in CANDIDATE_AUDIO_MODELS:
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                        UNIFIED_AUDIO_PROMPT
+                    ]
+                )
+                raw_text = response.text.strip() if response.text else ""
+                
+                if "TRANSCRIPT:" in raw_text and "REPLY:" in raw_text:
+                    t_section = raw_text.split("TRANSCRIPT:", 1)[1]
+                    if "LANGUAGE:" in t_section:
+                        t_val, rem = t_section.split("LANGUAGE:", 1)
+                        l_val, r_val = rem.split("REPLY:", 1)
+                        transcript = t_val.strip()
+                        detected_lang = l_val.strip().lower()
+                        reply_text = r_val.strip()
+                    else:
+                        t_val, r_val = t_section.split("REPLY:", 1)
+                        transcript = t_val.strip()
+                        reply_text = r_val.strip()
+                    
+                    if detected_lang not in ["english", "manglish", "malayalam_script"]:
+                        detected_lang = "english"
 
-    # 2. Process query through core agent with RAG
-    reply_text = generate_juvelle_reply(
-        customer_message=transcript,
-        session_id=session_id,
-        customer_name=customer_name
-    )
+                    logger.info(f"Single-pass audio success via {model_name}: '{transcript}' -> '{reply_text[:60]}...'")
+                    break
+            except Exception as ex:
+                logger.warning(f"Single-pass audio model '{model_name}' notice: {ex}")
+                continue
 
-    # 3. Check if user requested voice reply
+    # Step 2: Fallback to 2-stage RAG if single-pass was not completed
+    if not transcript or not reply_text:
+        transcription_result = transcribe_audio_with_gemini(audio_bytes, mime_type=mime_type)
+        transcript = transcription_result["transcript"]
+        detected_lang = transcription_result["detected_language"]
+
+        reply_text = generate_juvelle_reply(
+            customer_message=transcript,
+            session_id=session_id,
+            customer_name=customer_name
+        )
+
+    # Step 3: Record conversation turns into memory
+    try:
+        memory_manager.add_message(session_id, "user", f"[Voice Note]: {transcript}")
+        memory_manager.add_message(session_id, "assistant", reply_text)
+    except Exception as mem_ex:
+        logger.debug(f"Memory logging notice: {mem_ex}")
+
+    # Step 4: Check if user requested a voice reply
     wants_voice = check_voice_reply_requested(transcript)
     audio_data = None
     if wants_voice:

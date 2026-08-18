@@ -387,10 +387,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             isDiscardingVoice = false;
             voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             
+            const recorderOptions = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
             try {
-                mediaRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
+                mediaRecorder = new MediaRecorder(voiceStream, recorderOptions);
             } catch (e) {
-                mediaRecorder = new MediaRecorder(voiceStream);
+                try {
+                    mediaRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
+                } catch (e2) {
+                    mediaRecorder = new MediaRecorder(voiceStream);
+                }
             }
 
             audioChunks = [];
@@ -553,220 +558,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- INSTAGRAM LIVE AUDIO CALL CONTROLLER ---
+    // --- DIRECT GEMINI SPARK LIVE CONTROLLER ---
     class LiveCallController {
         constructor() {
             this.callBtn = document.getElementById('callBtn');
             this.callOverlay = document.getElementById('callOverlay');
-            this.callStatusText = document.getElementById('callStatusText');
-            this.callTimer = document.getElementById('callTimer');
-            this.callCaptionText = document.getElementById('callCaptionText');
-            this.callMuteBtn = document.getElementById('callMuteBtn');
-            this.callEndBtn = document.getElementById('callEndBtn');
-            this.callSpeakerBtn = document.getElementById('callSpeakerBtn');
-            this.callSpeechInput = document.getElementById('callSpeechInput');
-            this.callSpeechSendBtn = document.getElementById('callSpeechSendBtn');
-
-            this.ws = null;
-            this.stream = null;
-            this.callRecorder = null;
-            this.timerInterval = null;
-            this.startTime = null;
-            this.isMuted = false;
-            this.currentAudioPlayer = null;
-
             this.init();
         }
 
         init() {
             if (this.callBtn) {
-                this.callBtn.addEventListener('click', () => this.startLiveCall());
-            }
-            if (this.callEndBtn) {
-                this.callEndBtn.addEventListener('click', () => this.endLiveCall());
-            }
-            if (this.callMuteBtn) {
-                this.callMuteBtn.addEventListener('click', () => this.toggleMute());
-            }
-            if (this.callSpeechSendBtn && this.callSpeechInput) {
-                this.callSpeechSendBtn.addEventListener('click', () => this.sendInCallSpeech());
-                this.callSpeechInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter') this.sendInCallSpeech();
+                this.callBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.openGeminiSparkLive();
                 });
             }
         }
 
-        sendInCallSpeech() {
-            if (!this.callSpeechInput) return;
-            const text = this.callSpeechInput.value.trim();
-            if (!text) return;
-            this.callSpeechInput.value = '';
-
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.callCaptionText.innerText = `You: "${text}"`;
-                this.callStatusText.innerText = "Juvelle is thinking...";
-                this.ws.send(JSON.stringify({ action: "speech", text: text }));
-            } else {
-                showToast("Live call is connecting...", false);
-            }
-        }
-
-        async startLiveCall() {
-            console.log("Initiating Live Audio Call...");
-            this.callOverlay.classList.remove('hidden');
-            this.callStatusText.innerText = "Calling Juvelle Support...";
-            this.callCaptionText.innerText = "Connecting live audio bridge...";
-            this.callTimer.classList.add('hidden');
-
-            // 1. Attempt microphone access (gracefully fallback if denied)
-            let micGranted = false;
+        openGeminiSparkLive() {
+            showToast("✨ Opening Gemini Spark Live Voice Assistant...", false, 3500);
+            const sparkUrl = "https://gemini.google.com/";
+            const windowFeatures = "width=480,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes";
             try {
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    micGranted = true;
+                const liveWindow = window.open(sparkUrl, "GeminiSparkLive", windowFeatures);
+                if (!liveWindow || liveWindow.closed || typeof liveWindow.closed === 'undefined') {
+                    window.open(sparkUrl, "_blank");
                 }
             } catch (err) {
-                console.warn("Live Call Microphone access:", err);
-                showToast("🎙️ Mic permission not granted. Switched to Interactive Live Call Mode.", false, 7000);
-            }
-
-            // 2. Connect WebSocket
-            try {
-                const wsUrl = `ws://127.0.0.1:8000/api/live-call/${currentSessionId}`;
-                this.ws = new WebSocket(wsUrl);
-
-                this.ws.onopen = () => {
-                    console.log("Live Call WebSocket connected");
-                    this.callStatusText.innerText = micGranted ? "Connected • Juvelle AI Live" : "Interactive Live Call (Audio Active)";
-                    this.startCallTimer();
-                    if (micGranted && this.stream) {
-                        this.startAudioStreaming();
-                    }
-                };
-
-                this.ws.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        this.handleServerEvent(data);
-                    } catch (e) {
-                        console.error("WS Parse Error:", e);
-                    }
-                };
-
-                this.ws.onerror = (err) => {
-                    console.error("WS Error:", err);
-                    this.callStatusText.innerText = "Call Connection Error";
-                };
-
-                this.ws.onclose = () => {
-                    console.log("Live Call WS closed");
-                    this.cleanupCallState();
-                };
-
-            } catch (err) {
-                console.error("Microphone / Call Error:", err);
-                showToast("Could not connect to live audio call.", true);
-                this.endLiveCall();
-            }
-        }
-
-        startAudioStreaming() {
-            if (!this.stream || !this.ws) return;
-
-            try {
-                this.callRecorder = new MediaRecorder(this.stream, { mimeType: 'audio/webm' });
-            } catch (e) {
-                this.callRecorder = new MediaRecorder(this.stream);
-            }
-
-            this.callRecorder.ondataavailable = (e) => {
-                if (e.data && e.data.size > 0 && this.ws && this.ws.readyState === WebSocket.OPEN && !this.isMuted) {
-                    this.ws.send(e.data);
-                }
-            };
-            // Stream audio chunks every 3.5 seconds for continuous conversational speech
-            this.callRecorder.start(3500);
-        }
-
-        handleServerEvent(data) {
-            if (data.type === "connected") {
-                this.callStatusText.innerText = "Active Call";
-            } else if (data.type === "user_speech") {
-                this.callCaptionText.innerText = `You: "${data.transcript}"`;
-            } else if (data.type === "bot_speech") {
-                this.callCaptionText.innerText = `Juvelle: "${data.text}"`;
-                if (data.audio_data) {
-                    if (this.currentAudioPlayer) {
-                        this.currentAudioPlayer.pause();
-                    }
-                    this.currentAudioPlayer = new Audio(data.audio_data);
-                    this.currentAudioPlayer.play().catch(e => console.warn("Audio autoplay:", e));
-                }
-            } else if (data.type === "status") {
-                if (data.state === "listening") {
-                    this.callStatusText.innerText = "Listening to you...";
-                } else if (data.state === "speaking") {
-                    this.callStatusText.innerText = "Juvelle is speaking...";
-                } else {
-                    this.callStatusText.innerText = "Active Call";
-                }
-            }
-        }
-
-        toggleMute() {
-            this.isMuted = !this.isMuted;
-            if (this.stream) {
-                this.stream.getAudioTracks().forEach(track => track.enabled = !this.isMuted);
-            }
-            if (this.isMuted) {
-                this.callMuteBtn.classList.add('active-muted');
-                this.callMuteBtn.innerHTML = '<i class="fa-solid fa-microphone-slash"></i>';
-                showToast("Microphone Muted", false, 2000);
-            } else {
-                this.callMuteBtn.classList.remove('active-muted');
-                this.callMuteBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
-                showToast("Microphone Unmuted", false, 2000);
-            }
-        }
-
-        startCallTimer() {
-            this.startTime = Date.now();
-            this.callTimer.classList.remove('hidden');
-            clearInterval(this.timerInterval);
-            this.timerInterval = setInterval(() => {
-                const diff = Math.floor((Date.now() - this.startTime) / 1000);
-                const mins = Math.floor(diff / 60);
-                const secs = diff % 60;
-                this.callTimer.innerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            }, 1000);
-        }
-
-        endLiveCall() {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ action: "hangup" }));
-                this.ws.close();
-            }
-            this.cleanupCallState();
-        }
-
-        cleanupCallState() {
-            if (this.callRecorder && this.callRecorder.state !== 'inactive') {
-                try { this.callRecorder.stop(); } catch (e) {}
-            }
-            if (this.stream) {
-                this.stream.getTracks().forEach(t => t.stop());
-                this.stream = null;
-            }
-            if (this.currentAudioPlayer) {
-                this.currentAudioPlayer.pause();
-                this.currentAudioPlayer = null;
-            }
-            clearInterval(this.timerInterval);
-            this.callOverlay.classList.add('hidden');
-            this.isMuted = false;
-            if (this.callMuteBtn) {
-                this.callMuteBtn.classList.remove('active-muted');
-                this.callMuteBtn.innerHTML = '<i class="fa-solid fa-microphone"></i>';
+                window.open(sparkUrl, "_blank");
             }
         }
     }
