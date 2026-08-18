@@ -558,41 +558,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // --- DIRECT GEMINI SPARK LIVE CONTROLLER ---
-    class LiveCallController {
-        constructor() {
-            this.callBtn = document.getElementById('callBtn');
-            this.callOverlay = document.getElementById('callOverlay');
-            this.init();
-        }
-
-        init() {
-            if (this.callBtn) {
-                this.callBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.openGeminiSparkLive();
-                });
-            }
-        }
-
-        openGeminiSparkLive() {
-            showToast("✨ Opening Gemini Spark Live Voice Assistant...", false, 3500);
-            const sparkUrl = "https://gemini.google.com/";
-            const windowFeatures = "width=480,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes";
-            try {
-                const liveWindow = window.open(sparkUrl, "GeminiSparkLive", windowFeatures);
-                if (!liveWindow || liveWindow.closed || typeof liveWindow.closed === 'undefined') {
-                    window.open(sparkUrl, "_blank");
-                }
-            } catch (err) {
-                window.open(sparkUrl, "_blank");
-            }
-        }
-    }
-
-    // Initialize Call Controller
-    const callController = new LiveCallController();
-
     // --- Settings & Burst Mode ---
     if (settingsBtn && settingsModal) {
         settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));

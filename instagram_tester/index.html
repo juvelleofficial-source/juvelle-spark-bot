@@ -45,7 +45,6 @@
                 </div>
             </div>
             <div class="header-right">
-                <i class="fa-solid fa-phone header-call-btn" id="callBtn" title="Start Live Audio Call"></i>
                 <div class="toggle-container">
                     <span class="mode-label" id="modeLabel">Test</span>
                     <label class="switch">
@@ -146,47 +145,6 @@
                 <button class="voice-action-btn voice-send-btn" id="voiceSendBtn" title="Send voice note (Enter)">
                     <i class="fa-solid fa-paper-plane"></i>
                     <span>Send</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Instagram Live Audio Call Overlay -->
-        <div class="call-overlay hidden" id="callOverlay">
-            <div class="call-top-bar">
-                <span class="call-badge"><i class="fa-solid fa-lock"></i> End-to-End Encrypted</span>
-            </div>
-            <div class="call-body">
-                <div class="call-avatar-wrapper">
-                    <div class="call-pulse-ring ring-1"></div>
-                    <div class="call-pulse-ring ring-2"></div>
-                    <div class="call-pulse-ring ring-3"></div>
-                    <img src="https://ui-avatars.com/api/?name=Juvelle&background=000&color=fff" alt="Juvelle AI" class="call-avatar">
-                </div>
-                <div class="call-user-title">Juvelle Support</div>
-                <div class="call-status-indicator" id="callStatusText">Calling...</div>
-                <div class="call-timer-badge hidden" id="callTimer">00:00</div>
-                
-                <!-- Live Real-Time Captions Box -->
-                <div class="call-captions-box" id="callCaptionsBox">
-                    <div class="caption-label"><i class="fa-solid fa-closed-captioning"></i> Live Subtitles</div>
-                    <div class="caption-content" id="callCaptionText">Connecting to Juvelle Live Assistant...</div>
-                </div>
-
-                <!-- In-Call Quick Speech Bar (For Testing with or without Mic) -->
-                <div class="call-quick-speech" id="callQuickSpeech">
-                    <input type="text" id="callSpeechInput" class="call-speech-input" placeholder="Say something (or type in call)..." autocomplete="off">
-                    <button id="callSpeechSendBtn" class="call-speech-btn">Speak</button>
-                </div>
-            </div>
-            <div class="call-bottom-controls">
-                <button class="call-ctrl-btn" id="callMuteBtn" title="Mute Microphone">
-                    <i class="fa-solid fa-microphone"></i>
-                </button>
-                <button class="call-ctrl-btn call-hangup-btn" id="callEndBtn" title="End Call">
-                    <i class="fa-solid fa-phone-slash"></i>
-                </button>
-                <button class="call-ctrl-btn" id="callSpeakerBtn" title="Speaker">
-                    <i class="fa-solid fa-volume-high"></i>
                 </button>
             </div>
         </div>
