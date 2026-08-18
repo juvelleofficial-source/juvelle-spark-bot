@@ -295,6 +295,10 @@ async def handle_voice_message(
 
 @app.get("/")
 def serve_index():
+    tester_index = os.path.join(instagram_tester_dir, "index.html") if os.path.exists(instagram_tester_dir) else ""
+    if tester_index and os.path.exists(tester_index):
+        with open(tester_index, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
     index_file = os.path.join(frontend_dir, "index.html")
     if os.path.exists(index_file):
         with open(index_file, "r", encoding="utf-8") as f:

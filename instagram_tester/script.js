@@ -365,13 +365,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, duration);
     }
 
-    // --- Voice Recording State & Handlers ---
+    // --- Persistent Audio Stream & Microphone Permission Engine ---
     let isDiscardingVoice = false;
-    let voiceStream = null;
+    let cachedVoiceStream = null;
 
     const voiceCancelBtn = document.getElementById('voiceCancelBtn');
     const voiceSendBtn = document.getElementById('voiceSendBtn');
     const voiceActiveMicBtn = document.getElementById('voiceActiveMicBtn');
+
+    // Helper: Obtain or reuse persistent audio stream
+    async function getOrInitAudioStream() {
+        // If an active stream already exists in memory, reuse it without triggering a new browser prompt
+        if (cachedVoiceStream) {
+            const activeTracks = cachedVoiceStream.getAudioTracks().filter(t => t.readyState === 'live');
+            if (activeTracks.length > 0) {
+                activeTracks.forEach(t => t.enabled = true);
+                return cachedVoiceStream;
+            }
+        }
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Microphone access is not supported by your browser.");
+        }
+
+        cachedVoiceStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+        return cachedVoiceStream;
+    }
+
+    // Inform user if running via file:// protocol where browsers refuse to save permissions
+    if (window.location.protocol === 'file:') {
+        setTimeout(() => {
+            showToast("💡 Pro-Tip: Open via http://127.0.0.1:8000/ so Chrome permanently remembers your microphone permission!", false, 8000);
+        }, 1500);
+    }
 
     async function startRecording() {
         if (mediaRecorder && mediaRecorder.state === "recording") {
@@ -379,22 +411,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         try {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                showToast("Microphone not supported in this browser. Please allow microphone permissions or use Chrome/Edge.", true);
-                return;
-            }
-
             isDiscardingVoice = false;
-            voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await getOrInitAudioStream();
             
             const recorderOptions = { mimeType: 'audio/webm;codecs=opus', audioBitsPerSecond: 128000 };
             try {
-                mediaRecorder = new MediaRecorder(voiceStream, recorderOptions);
+                mediaRecorder = new MediaRecorder(stream, recorderOptions);
             } catch (e) {
                 try {
-                    mediaRecorder = new MediaRecorder(voiceStream, { mimeType: 'audio/webm' });
+                    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
                 } catch (e2) {
-                    mediaRecorder = new MediaRecorder(voiceStream);
+                    mediaRecorder = new MediaRecorder(stream);
                 }
             }
 
@@ -408,9 +435,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             mediaRecorder.onstop = async () => {
                 voiceOverlay.classList.add('hidden');
                 clearInterval(recordInterval);
-                if (voiceStream) {
-                    voiceStream.getTracks().forEach(track => track.stop());
-                    voiceStream = null;
+                // Keep stream alive in background so next click records instantly without asking permission
+                if (cachedVoiceStream) {
+                    cachedVoiceStream.getAudioTracks().forEach(track => track.enabled = false);
                 }
 
                 if (!isDiscardingVoice && audioChunks.length > 0) {
@@ -434,7 +461,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (err) {
             console.warn("Mic Error:", err);
             voiceOverlay.classList.add('hidden');
-            showToast("🎙️ Mic permission needed. Click the lock/mic icon in the address bar to Allow Microphone.", true, 7000);
+            if (window.location.protocol === 'file:') {
+                showToast("🎙️ To save microphone permission permanently, please run Start Juvelle Bot.bat and open http://127.0.0.1:8000/", true, 9000);
+            } else {
+                showToast("🎙️ Mic permission needed. Click the lock/mic icon in the address bar to Allow Microphone on this site.", true, 7000);
+            }
         }
     }
 
@@ -452,9 +483,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else {
             voiceOverlay.classList.add('hidden');
             clearInterval(recordInterval);
-            if (voiceStream) {
-                voiceStream.getTracks().forEach(track => track.stop());
-                voiceStream = null;
+            if (cachedVoiceStream) {
+                cachedVoiceStream.getAudioTracks().forEach(track => track.enabled = false);
             }
         }
         showToast("Voice recording cancelled.", false, 2500);
