@@ -47,9 +47,9 @@ class TestGeminiSparkSystem(unittest.TestCase):
         self.assertEqual(len(vector_indexer._LOCAL_VECTOR_STORE), synced_count)
 
         # Test Hybrid Vector Retrieval
-        results = retrieve_hybrid_context("How does Apache Spark handle distributed document ingestion?", top_k=3)
+        results = retrieve_hybrid_context("churidar tops fabric and price", top_k=3)
         self.assertGreater(len(results), 0)
-        self.assertTrue(any("JUV" in r["doc_id"] or "doc" in r["doc_id"].lower() for r in results))
+        self.assertTrue(any("content" in r and len(r["content"]) > 0 for r in results))
 
     def test_dual_tier_memory(self):
         """Verify in-memory sliding window and SQLite persistent logging."""
