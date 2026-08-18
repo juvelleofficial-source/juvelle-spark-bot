@@ -15,3 +15,9 @@ services:
         sync: false
       - key: QDRANT_COLLECTION_NAME
         value: juvelle_knowledge
+      - key: META_VERIFY_TOKEN
+        value: gemini_spark_secret_verify_token
+      - key: META_PAGE_ID
+        value: "932916046574692"
+      - key: META_PAGE_ACCESS_TOKEN
+        value: "EAFrFP1J7LxQBScbmO6EgXXQH0nkl98M3Xk6q58O9bxnSYh3VB0ZBNZBKD4VD16XEjSJOFnTZARdNWvGdz1JMZAgEuSo1BDCtJCPYGETgoMM3zJ1pF0KAXwtVoEmZB7mHCVTXNRPUSctRmQXWTDn4TJpBSccDcypW0jXiHl6dwIXszsp0f162frMZBs80C8dRZAAt78Jaizt6ZB6W9YvbJYkDW3fI8A49K49Ru3V5x4JmoP8ZD"
