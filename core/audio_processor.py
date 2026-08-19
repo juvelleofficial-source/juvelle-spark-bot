@@ -120,3 +120,45 @@ def transcribe_and_understand_voice_note(audio_bytes: bytes, mime_type: Optional
         except Exception as e2:
             logger.error(f"Fallback audio transcription notice: {e2}")
             return ""
+
+def process_voice_message(
+    audio_bytes: bytes,
+    mime_type: Optional[str] = None,
+    session_id: str = "default_user",
+    customer_name: Optional[str] = None
+) -> dict:
+    """
+    End-to-end voice message processing:
+    1. Transcribes audio via Gemini Multimodal.
+    2. Runs reasoning / RAG pipeline.
+    3. Returns structured output for API consumers.
+    """
+    from core.juvelle_agent import generate_juvelle_response
+
+    transcript = transcribe_and_understand_voice_note(audio_bytes, mime_type)
+    if not transcript:
+        return {
+            "transcript": "",
+            "detected_language": "unknown",
+            "reply_text": "Thank you for reaching out to Juvelle! Could you please repeat that or send a text message?",
+            "audio_data": None,
+            "has_audio_reply": False,
+            "session_id": session_id
+        }
+
+    responses = generate_juvelle_response(
+        chat_input=transcript,
+        session_id=session_id,
+        user_id=session_id
+    )
+
+    reply_text = "\n".join(responses) if isinstance(responses, list) else str(responses)
+
+    return {
+        "transcript": transcript,
+        "detected_language": "auto",
+        "reply_text": reply_text,
+        "audio_data": None,
+        "has_audio_reply": False,
+        "session_id": session_id
+    }
