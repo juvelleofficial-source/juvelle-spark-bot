@@ -516,7 +516,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                 if attachments:
                     for att in attachments:
                         att_type = att.get("type", "").lower()
-                        if att_type in ["audio", "voice", "video"]:
+                        if "audio" in att_type or "voice" in att_type or "video" in att_type:
                             audio_link = att.get("payload", {}).get("url") or att.get("file_url")
                             break
 
@@ -569,7 +569,6 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                         meta_mid=mid
                     )
                     await _broadcast_new_message(sender_id, text, platform_name)
-                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
             # 3. Check changes array (alternative Instagram Graph Webhooks format)
             for change in entry.get("changes", []):
@@ -599,7 +598,6 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                         )
                         logger.info(f"Enqueued {platform_name} message from changes ({sender_id}, MID: {mid}): '{text}'")
                         await _broadcast_new_message(str(sender_id), str(text), platform_name)
-                        background_tasks.add_task(process_and_reply_async, str(sender_id), str(text), platform_name)
 
         WEBHOOK_LOGS.append(event_entry)
         if len(WEBHOOK_LOGS) > 100:
@@ -625,7 +623,6 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                         )
                         logger.info(f"Enqueued whatsapp message from {from_number}: '{text}'")
                         await _broadcast_new_message(str(from_number), str(text), "whatsapp")
-                        background_tasks.add_task(process_and_reply_async, str(from_number), str(text), "whatsapp")
 
         WEBHOOK_LOGS.append(event_entry)
         if len(WEBHOOK_LOGS) > 100:

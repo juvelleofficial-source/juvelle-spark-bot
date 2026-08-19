@@ -324,39 +324,6 @@ def generate_live_neural_reply(
     turn_num = lifecycle_info.get("turn_count", 1) if lifecycle_info else 1
     cleaned_input = chat_input.lower().strip().rstrip("!.,? ")
 
-    # 2. Instant Sub-Millisecond Greeting Intercept (Zero-LLM Latency)
-    if cleaned_input in GREETING_WORDS:
-        if state == "active_ongoing":
-            if detected_lang == "manglish":
-                return "Hey! Parayuu, enganeya help cheyyendathu?"
-            elif detected_lang == "malayalam_script":
-                return "ഹലോ! പറയൂ, എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?"
-            elif detected_lang == "hinglish":
-                return "Hey! Haan bataiye, kaise help karoon?"
-            elif detected_lang == "hindi_script":
-                return "नमस्ते! हाँ बताइए, मैं आपकी क्या मदद कर सकता हूँ?"
-            elif detected_lang == "tanglish":
-                return "Hey! Sollunga, eppadi help panradhu?"
-            elif detected_lang == "tamil_script":
-                return "வணக்கம்! சொல்லுங்கள், உங்களுக்கு எப்படி உதவ வேண்டும்?"
-            return "Hey! Yes, tell me, how can I help you today?"
-        elif state == "returning_customer":
-            if detected_lang == "manglish":
-                return "Hey again! Welcome back to Juvelle. Enganeya help cheyyendath?"
-            elif detected_lang == "hinglish":
-                return "Hey again! Welcome back to Juvelle. Kaise help karoon?"
-            return "Hey again! Welcome back to Juvelle. How can I help you today?"
-        else:
-            if detected_lang == "manglish":
-                return "Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?"
-            elif detected_lang == "hinglish":
-                return "Hey there! Welcome to Juvelle. Hum daily aur office wear Churidar tops mein specialize karte hain. Kaise help karoon?"
-            elif detected_lang == "hindi_script":
-                return "नमस्ते! Juvelle में आपका स्वागत है। हम डेली और ऑफिस वियर चूड़ीदार टॉप्स में स्पेशलाइज करते हैं। मैं आपकी क्या मदद कर सकता हूँ?"
-            elif detected_lang == "malayalam_script":
-                return "ഹലോ! Juvelle-ലേക്ക് സ്വാഗതം. ഞങ്ങൾ ഡെയ്‌ലി, ഓഫീസ് വെയർ ചുരിദാർ ടോപ്പുകളിൽ സ്പെഷ്യലൈസ് ചെയ്യുന്നു. എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?"
-            return "Hey there! Welcome to Juvelle. We specialize in daily and office wear Churidar tops. How can I help you today?"
-
     # 3. Retrieve grounded knowledge chunks from Qdrant Cloud / BM25
     retrieved_chunks = retrieve_hybrid_context(chat_input, top_k=2)
     rag_context = ""

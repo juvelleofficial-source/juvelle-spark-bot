@@ -95,7 +95,7 @@ def transcribe_and_understand_voice_note(audio_bytes: bytes, mime_type: Optional
         )
         
         response = client.models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-flash-lite-latest",
             contents=[
                 types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
                 prompt
