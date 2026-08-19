@@ -6,7 +6,7 @@ import json
 import time
 from core.juvelle_agent import generate_juvelle_reply
 from core.audio_processor import download_audio_bytes, transcribe_and_understand_voice_note
-from mcp_server.meta_client import send_meta_graph_reply, _get_token
+from mcp_server.meta_client import send_meta_graph_reply, send_meta_sender_action, _get_token
 from mcp_server.message_queue import is_meta_mid_processed, mark_meta_mid_processed
 
 logger = logging.getLogger("LiveThreadWorker")
@@ -76,6 +76,13 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
 
                         if sender_username != "juvelle.store":
                             t_start = time.time()
+
+                            # Show immediate typing indicator
+                            try:
+                                send_meta_sender_action(recipient_id=sender_id or "1701855650538450", action="mark_seen")
+                                send_meta_sender_action(recipient_id=sender_id or "1701855650538450", action="typing_on")
+                            except Exception:
+                                pass
                             
                             # Check if audio attachment exists
                             is_audio = False

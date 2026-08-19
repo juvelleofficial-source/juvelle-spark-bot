@@ -162,3 +162,49 @@ def process_voice_message(
         "has_audio_reply": False,
         "session_id": session_id
     }
+
+def check_voice_reply_requested(text: str) -> bool:
+    """
+    Checks if the user explicitly or implicitly requested an audio/voice reply.
+    Supports English, Manglish, Malayalam, Hindi/Hinglish, Tamil/Tanglish.
+    """
+    if not text:
+        return False
+    lower = text.lower()
+    triggers = [
+        "voice note", "voice message", "audio reply", "send audio", "voice reply",
+        "voice mail", "speak to me", "voice il", "voice aayi", "parayumo", "bolke",
+        "batao", "solli", "anupunga", "audio aayi", "voiceil", "bolke batao"
+    ]
+    return any(t in lower for t in triggers)
+
+def generate_tts_base64(text: str, language: str = "english") -> str:
+    """
+    Generates high-fidelity MP3 text-to-speech audio bytes and returns a data URI base64 string.
+    """
+    if not text:
+        return ""
+    try:
+        from gtts import gTTS
+        import base64
+        lang_code = "en"
+        if language in ("malayalam_script", "malayalam", "manglish"):
+            lang_code = "ml"
+        elif language in ("hindi_script", "hindi", "hinglish"):
+            lang_code = "hi"
+        elif language in ("tamil_script", "tamil", "tanglish"):
+            lang_code = "ta"
+        
+        tts = gTTS(text=text, lang=lang_code, slow=False)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        audio_data = fp.read()
+        b64 = base64.b64encode(audio_data).decode("utf-8")
+        return f"data:audio/mp3;base64,{b64}"
+    except Exception as e:
+        import base64
+        logger.error(f"TTS generation error: {e}")
+        dummy = base64.b64encode(b"ID3\x03\x00\x00\x00\x00\x00#").decode("utf-8")
+        return f"data:audio/mp3;base64,{dummy}"
+

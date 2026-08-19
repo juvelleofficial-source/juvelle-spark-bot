@@ -87,4 +87,33 @@ def send_meta_graph_reply(recipient_id: str, message_text: str, custom_token: Op
         logger.error(f"Failed to send Meta message: {e}")
         return {"status": "error", "error": str(e)}
 
+def send_meta_sender_action(recipient_id: str, action: str = "typing_on", custom_token: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Sends native Instagram/Messenger sender actions ('typing_on', 'typing_off', 'mark_seen')
+    to provide real-time typing indicators in the user's chat.
+    """
+    token = _get_token(custom_token)
+    if not token:
+        return {"status": "simulated"}
+
+    url = "https://graph.facebook.com/v21.0/me/messages"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "recipient": {"id": recipient_id},
+        "sender_action": action
+    }
+
+    client = _get_http_client()
+    try:
+        response = client.post(url, json=payload, headers=headers)
+        return {"status": "success", "action": action, "code": response.status_code}
+    except Exception as e:
+        logger.debug(f"Sender action notice ({action}): {e}")
+        return {"status": "error", "error": str(e)}
+
+
 
