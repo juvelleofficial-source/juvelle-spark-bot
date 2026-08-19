@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, Response, HTTPException, Query
+from fastapi import APIRouter, Request, Response, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -347,6 +347,26 @@ async def _broadcast_new_message(sender_id: str, message_text: str, platform: st
         _unregister_sse_session(sid)
     logger.info(f"Broadcast new_message to {len(_ACTIVE_SSE_SESSIONS)} Spark sessions for sender {sender_id}")
 
+async def process_and_reply_async(sender_id: str, message_text: str, platform: str = "instagram"):
+    """
+    Autonomous background worker that generates a brand-grounded AI reply
+    using the Juvelle conversational AI engine and dispatches it immediately via Meta Graph API.
+    """
+    try:
+        from core.juvelle_agent import generate_juvelle_reply
+        logger.info(f"[AUTONOMOUS AI WORKER] Processing {platform} message from {sender_id}: '{message_text}'")
+        reply_text = generate_juvelle_reply(
+            customer_message=message_text,
+            session_id=sender_id,
+            customer_name=sender_id
+        )
+        logger.info(f"[AUTONOMOUS AI WORKER] Generated AI reply for {sender_id}: '{reply_text}'")
+
+        result = send_meta_graph_reply(recipient_id=sender_id, message_text=reply_text)
+        logger.info(f"[AUTONOMOUS AI WORKER] Meta Graph API dispatch result for {sender_id}: {result}")
+    except Exception as e:
+        logger.error(f"[AUTONOMOUS AI WORKER] Error processing auto-reply for {sender_id}: {e}", exc_info=True)
+
 # Ring buffer for live webhook telemetry (in-memory + diagnostic)
 WEBHOOK_LOGS = []
 
@@ -430,11 +450,11 @@ def get_webhook_logs_html():
 @mcp_router.post("/webhook/facebook")
 @mcp_router.post("/webhook/instagram")
 @mcp_router.post("/webhook/meta")
-async def receive_facebook_webhook(request: Request):
+async def receive_facebook_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Receives incoming messaging events from Facebook Messenger, WhatsApp, or Instagram DMs.
-    Enqueues messages into SQLite inbox and pushes real-time SSE notifications to Gemini Spark.
-    Gemini Spark (24/7 cloud agent on gemini.google.com) handles ALL AI reasoning and reply generation via MCP tools.
+    Enqueues messages into SQLite inbox, broadcasts real-time SSE notifications to Gemini Spark,
+    and runs the autonomous background AI reply worker to respond via Meta Graph API.
     """
     import datetime
     try:
@@ -471,7 +491,7 @@ async def receive_facebook_webhook(request: Request):
                 if sender_id and text:
                     event_entry["sender_id"] = sender_id
                     event_entry["text"] = text
-                    event_entry["status"] = "QUEUED_FOR_SPARK"
+                    event_entry["status"] = "QUEUED_FOR_REPLY"
                     enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
@@ -479,6 +499,7 @@ async def receive_facebook_webhook(request: Request):
                     )
                     logger.info(f"Enqueued {platform_name} message from {sender_id}: '{text}'")
                     await _broadcast_new_message(sender_id, text, platform_name)
+                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
             # 2. Check standby array
             for standby_event in entry.get("standby", []):
@@ -490,6 +511,7 @@ async def receive_facebook_webhook(request: Request):
                     event_entry["status"] = "STANDBY_QUEUED"
                     enqueue_facebook_message(sender_id=sender_id, message_text=text, platform=platform_name)
                     await _broadcast_new_message(sender_id, text, platform_name)
+                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
             # 3. Check changes array (alternative Instagram Graph Webhooks format)
             for change in entry.get("changes", []):
@@ -509,6 +531,7 @@ async def receive_facebook_webhook(request: Request):
                         )
                         logger.info(f"Enqueued {platform_name} message from changes ({sender_id}): '{text}'")
                         await _broadcast_new_message(str(sender_id), str(text), platform_name)
+                        background_tasks.add_task(process_and_reply_async, str(sender_id), str(text), platform_name)
 
         WEBHOOK_LOGS.append(event_entry)
         if len(WEBHOOK_LOGS) > 100:
@@ -534,6 +557,7 @@ async def receive_facebook_webhook(request: Request):
                         )
                         logger.info(f"Enqueued whatsapp message from {from_number}: '{text}'")
                         await _broadcast_new_message(str(from_number), str(text), "whatsapp")
+                        background_tasks.add_task(process_and_reply_async, str(from_number), str(text), "whatsapp")
 
         WEBHOOK_LOGS.append(event_entry)
         if len(WEBHOOK_LOGS) > 100:
