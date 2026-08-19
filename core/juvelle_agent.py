@@ -131,6 +131,7 @@ def get_genai_client() -> Optional[genai.Client]:
                             break
             except Exception:
                 pass
+
     if api_key:
         _GENAI_CLIENT_SINGLETON = genai.Client(api_key=api_key)
         return _GENAI_CLIENT_SINGLETON
