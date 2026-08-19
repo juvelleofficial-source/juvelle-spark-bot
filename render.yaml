@@ -20,4 +20,4 @@ services:
       - key: META_PAGE_ID
         value: "932916046574692"
       - key: META_PAGE_ACCESS_TOKEN
-        value: "EAFrFP1J7LxQBSeTVUCBbc7peSJ36NCPXsSqw3HX4H1KqqNKEUjRMR9ptOP590pLhSn8ZALhopGiwPa6ZAKfGEdiZAwGWpIXDAKhZCewjGurS31jC6TZCesqm1wyVhEFT8aYGRSE6emzZA4gUZBXlxDnQqoF7VsKhBSvsWf1I5oYCPUiznJWnFZCnVmZBCo9qjgk7SfXpZAsf83WjE6Hi3U4epqw5jY1z9dcDy19jE537Ro"
+        sync: false

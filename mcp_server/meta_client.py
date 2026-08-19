@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 META_PAGE_ACCESS_TOKEN = os.getenv("META_PAGE_ACCESS_TOKEN", None)
 META_VERIFY_TOKEN = os.getenv("META_VERIFY_TOKEN", "gemini_spark_secret_verify_token")
 
-DEFAULT_META_PAGE_ACCESS_TOKEN = "EAFrFP1J7LxQBSeTVUCBbc7peSJ36NCPXsSqw3HX4H1KqqNKEUjRMR9ptOP590pLhSn8ZALhopGiwPa6ZAKfGEdiZAwGWpIXDAKhZCewjGurS31jC6TZCesqm1wyVhEFT8aYGRSE6emzZA4gUZBXlxDnQqoF7VsKhBSvsWf1I5oYCPUiznJWnFZCnVmZBCo9qjgk7SfXpZAsf83WjE6Hi3U4epqw5jY1z9dcDy19jE537Ro"
+# SECURITY: Meta Page Access Token must be set via environment variable or Render Dashboard.
+# Never hardcode tokens in source code.
 
 def _get_token(custom_token: Optional[str] = None) -> Optional[str]:
     if custom_token:
@@ -33,7 +34,7 @@ def _get_token(custom_token: Optional[str] = None) -> Optional[str]:
                             return line.split("=", 1)[1].strip().strip('"').strip("'")
             except Exception:
                 pass
-    return DEFAULT_META_PAGE_ACCESS_TOKEN
+    return None
 
 def send_meta_graph_reply(recipient_id: str, message_text: str, custom_token: Optional[str] = None) -> Dict[str, Any]:
     """

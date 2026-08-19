@@ -77,10 +77,10 @@ async def startup_event():
         
     # Start 24/7 keep-alive worker
     asyncio.create_task(keep_alive_background_worker())
-    
-    # Start 24/7 Real-Time Live Instagram DM Poller Worker
-    from core.live_thread_worker import live_instagram_poll_worker
-    asyncio.create_task(live_instagram_poll_worker())
+
+    # NOTE: live_instagram_poll_worker REMOVED — Gemini Spark handles all AI
+    # reply generation via MCP tools (get_pending_messages → search_knowledge_base → send_facebook_reply).
+    # The MCP server is a dumb bridge; it does NOT generate AI replies server-side.
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])

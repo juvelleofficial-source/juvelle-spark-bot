@@ -2,7 +2,7 @@ import json
 import logging
 import uuid
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, Request, Response, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Request, Response, HTTPException, Query
 from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
 from sse_starlette.sse import EventSourceResponse
 
@@ -45,21 +45,32 @@ async def mcp_sse_stream(request: Request):
     messages_endpoint = f"{base_url}/mcp/messages"
 
     async def event_publisher():
-        # Emit initial endpoint discovery event according to MCP SSE specification
-        yield {
-            "event": "endpoint",
-            "data": f"/mcp/messages?sessionId={session_id}"
-        }
-        # Keep-alive heartbeat
-        while True:
-            if await request.is_disconnected():
-                break
-            import asyncio
-            await asyncio.sleep(15)
+        # Register this Spark session for real-time push notifications
+        push_queue = _register_sse_session(session_id)
+        
+        try:
+            # Emit initial endpoint discovery event according to MCP SSE specification
             yield {
-                "event": "ping",
-                "data": json.dumps({"status": "active"})
+                "event": "endpoint",
+                "data": f"/mcp/messages?sessionId={session_id}"
             }
+            # Combined heartbeat + push notification loop
+            while True:
+                if await request.is_disconnected():
+                    break
+                # Check for push notifications (new_message events) with 15s timeout for heartbeat
+                try:
+                    import asyncio
+                    event = await asyncio.wait_for(push_queue.get(), timeout=15.0)
+                    yield event
+                except asyncio.TimeoutError:
+                    # No push events — send heartbeat
+                    yield {
+                        "event": "ping",
+                        "data": json.dumps({"status": "active"})
+                    }
+        finally:
+            _unregister_sse_session(session_id)
 
     return EventSourceResponse(
         event_publisher(),
@@ -295,25 +306,46 @@ def verify_facebook_webhook(
     logger.warning(f"Meta Webhook Token mismatch: expected '{META_VERIFY_TOKEN}', got '{hub_verify_token}'")
     raise HTTPException(status_code=403, detail="Verification token mismatch")
 
-async def process_and_reply_async(sender_id: str, message_text: str, platform: str = "instagram"):
-    """
-    Autonomous background worker that generates a brand-grounded AI reply
-    using Juvelle conversational AI engine and dispatches it immediately via Meta Graph API.
-    """
-    try:
-        from core.juvelle_agent import generate_juvelle_reply
-        logger.info(f"[AUTONOMOUS WORKER] Processing {platform} message from {sender_id}: '{message_text}'")
-        reply_text = generate_juvelle_reply(
-            customer_message=message_text,
-            session_id=sender_id,
-            customer_name=sender_id
-        )
-        logger.info(f"[AUTONOMOUS WORKER] Generated AI reply for {sender_id}: '{reply_text}'")
-        
-        result = send_meta_graph_reply(recipient_id=sender_id, message_text=reply_text)
-        logger.info(f"[AUTONOMOUS WORKER] Meta Graph API dispatch result for {sender_id}: {result}")
-    except Exception as e:
-        logger.error(f"[AUTONOMOUS WORKER] Error processing auto-reply for {sender_id}: {e}", exc_info=True)
+# ==============================================================================
+# REAL-TIME SSE PUSH NOTIFICATION SYSTEM FOR GEMINI SPARK
+# ==============================================================================
+# The MCP server does NOT generate AI replies. Gemini Spark (24/7 cloud agent)
+# handles all reasoning and reply generation via MCP tools.
+# When a new DM arrives, we push an SSE event to all connected Spark sessions.
+
+import asyncio as _sse_asyncio
+
+_ACTIVE_SSE_SESSIONS: dict = {}  # session_id -> asyncio.Queue
+
+def _register_sse_session(session_id: str) -> _sse_asyncio.Queue:
+    """Registers a Spark SSE session for real-time push notifications."""
+    q = _sse_asyncio.Queue()
+    _ACTIVE_SSE_SESSIONS[session_id] = q
+    logger.info(f"Registered SSE session: {session_id} (total active: {len(_ACTIVE_SSE_SESSIONS)})")
+    return q
+
+def _unregister_sse_session(session_id: str):
+    """Removes a disconnected Spark SSE session."""
+    _ACTIVE_SSE_SESSIONS.pop(session_id, None)
+    logger.info(f"Unregistered SSE session: {session_id} (total active: {len(_ACTIVE_SSE_SESSIONS)})")
+
+async def _broadcast_new_message(sender_id: str, message_text: str, platform: str):
+    """Pushes a real-time 'new_message' event to all connected Gemini Spark sessions."""
+    event_data = json.dumps({
+        "type": "new_message",
+        "sender_id": sender_id,
+        "text": message_text[:200],
+        "platform": platform
+    })
+    dead_sessions = []
+    for sid, q in _ACTIVE_SSE_SESSIONS.items():
+        try:
+            await q.put({"event": "new_message", "data": event_data})
+        except Exception:
+            dead_sessions.append(sid)
+    for sid in dead_sessions:
+        _unregister_sse_session(sid)
+    logger.info(f"Broadcast new_message to {len(_ACTIVE_SSE_SESSIONS)} Spark sessions for sender {sender_id}")
 
 # Ring buffer for live webhook telemetry (in-memory + diagnostic)
 WEBHOOK_LOGS = []
@@ -398,10 +430,11 @@ def get_webhook_logs_html():
 @mcp_router.post("/webhook/facebook")
 @mcp_router.post("/webhook/instagram")
 @mcp_router.post("/webhook/meta")
-async def receive_facebook_webhook(request: Request, background_tasks: BackgroundTasks):
+async def receive_facebook_webhook(request: Request):
     """
     Receives incoming messaging events from Facebook Messenger, WhatsApp, or Instagram DMs.
-    Enqueues messages for audit, logs telemetry, and triggers autonomous real-time AI reply worker.
+    Enqueues messages into SQLite inbox and pushes real-time SSE notifications to Gemini Spark.
+    Gemini Spark (24/7 cloud agent) handles ALL AI reasoning and reply generation via MCP tools.
     """
     import datetime
     try:
@@ -438,14 +471,14 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                 if sender_id and text:
                     event_entry["sender_id"] = sender_id
                     event_entry["text"] = text
-                    event_entry["status"] = "QUEUED_FOR_REPLY"
+                    event_entry["status"] = "QUEUED_FOR_SPARK"
                     enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
                         platform=platform_name
                     )
                     logger.info(f"Enqueued {platform_name} message from {sender_id}: '{text}'")
-                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
+                    await _broadcast_new_message(sender_id, text, platform_name)
 
             # 2. Check standby array
             for standby_event in entry.get("standby", []):
@@ -456,7 +489,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     event_entry["text"] = text
                     event_entry["status"] = "STANDBY_QUEUED"
                     enqueue_facebook_message(sender_id=sender_id, message_text=text, platform=platform_name)
-                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
+                    await _broadcast_new_message(sender_id, text, platform_name)
 
             # 3. Check changes array (alternative Instagram Graph Webhooks format)
             for change in entry.get("changes", []):
@@ -475,7 +508,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                             platform=platform_name
                         )
                         logger.info(f"Enqueued {platform_name} message from changes ({sender_id}): '{text}'")
-                        background_tasks.add_task(process_and_reply_async, str(sender_id), str(text), platform_name)
+                        await _broadcast_new_message(str(sender_id), str(text), platform_name)
 
         WEBHOOK_LOGS.append(event_entry)
         if len(WEBHOOK_LOGS) > 100:
@@ -500,7 +533,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                             platform="whatsapp"
                         )
                         logger.info(f"Enqueued whatsapp message from {from_number}: '{text}'")
-                        background_tasks.add_task(process_and_reply_async, str(from_number), str(text), "whatsapp")
+                        await _broadcast_new_message(str(from_number), str(text), "whatsapp")
 
         WEBHOOK_LOGS.append(event_entry)
         if len(WEBHOOK_LOGS) > 100:
