@@ -511,38 +511,39 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     logger.info(f"Skipping duplicate messaging event for MID: {mid}")
                     continue
 
-                # Voice Note / Audio Attachment Detection
-                if not text and attachments:
+                # Voice Note / Audio Attachment Detection (100% Free Gemini Spark MCP pipeline)
+                audio_link = None
+                if attachments:
                     for att in attachments:
                         att_type = att.get("type", "").lower()
                         if att_type in ["audio", "voice", "video"]:
-                            audio_url = att.get("payload", {}).get("url") or att.get("file_url")
-                            if audio_url:
-                                logger.info(f"Downloading and decoding voice note from {sender_id}...")
-                                audio_res = download_audio_bytes(audio_url)
-                                if audio_res:
-                                    audio_bytes, mime = audio_res
-                                    text = transcribe_and_understand_voice_note(audio_bytes, mime)
-                                    logger.info(f"Transcribed voice message from {sender_id}: '{text}'")
-                                break
-                    if not text:
-                        text = "Customer sent an Instagram voice message."
+                            audio_link = att.get("payload", {}).get("url") or att.get("file_url")
+                            break
 
-                if sender_id and text:
+                if not text and audio_link:
+                    text = "[Voice Message Attached - Listen to audio_url]"
+
+                if sender_id and (text or audio_link):
                     if mid:
                         mark_meta_mid_processed(mid)
                     event_entry["sender_id"] = sender_id
-                    event_entry["text"] = text
-                    event_entry["status"] = "QUEUED_FOR_REPLY"
+                    event_entry["text"] = text or "[Voice Message]"
+                    event_entry["status"] = "QUEUED_FOR_SPARK"
                     enqueue_facebook_message(
                         sender_id=sender_id,
-                        message_text=text,
+                        message_text=text or "[Voice Message]",
                         platform=platform_name,
-                        meta_mid=mid
+                        meta_mid=mid,
+                        audio_url=audio_link
                     )
-                    logger.info(f"Enqueued {platform_name} message from {sender_id} (MID: {mid}): '{text}'")
-                    await _broadcast_new_message(sender_id, text, platform_name)
-                    background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
+                    logger.info(f"Enqueued {platform_name} message from {sender_id} (MID: {mid}, Audio: {bool(audio_link)}): '{text}'")
+                    await _broadcast_new_message(sender_id, text or "[Voice Message]", platform_name)
+                    # Send immediate typing acknowledgement
+                    try:
+                        send_meta_sender_action(recipient_id=sender_id, action="mark_seen")
+                        send_meta_sender_action(recipient_id=sender_id, action="typing_on")
+                    except Exception:
+                        pass
 
             # 2. Check standby array
             for standby_event in entry.get("standby", []):

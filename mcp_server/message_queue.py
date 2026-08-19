@@ -27,6 +27,7 @@ def init_mcp_inbox_db() -> None:
         sender_name TEXT,
         platform TEXT DEFAULT 'messenger',
         message_text TEXT NOT NULL,
+        audio_url TEXT,
         status TEXT DEFAULT 'pending', -- pending, replied, dismissed
         ai_reply TEXT,
         received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -34,9 +35,13 @@ def init_mcp_inbox_db() -> None:
     )
     """)
 
-    # Ensure meta_mid column exists if migrating from older schema
+    # Ensure meta_mid and audio_url columns exist if migrating from older schema
     try:
         cursor.execute("ALTER TABLE facebook_messages ADD COLUMN meta_mid TEXT")
+    except Exception:
+        pass
+    try:
+        cursor.execute("ALTER TABLE facebook_messages ADD COLUMN audio_url TEXT")
     except Exception:
         pass
 
@@ -86,7 +91,8 @@ def enqueue_facebook_message(
     message_text: str,
     sender_name: Optional[str] = None,
     platform: str = "messenger",
-    meta_mid: Optional[str] = None
+    meta_mid: Optional[str] = None,
+    audio_url: Optional[str] = None
 ) -> str:
     """Enqueues an incoming message received via Meta Webhook."""
     init_mcp_inbox_db()
@@ -97,9 +103,9 @@ def enqueue_facebook_message(
     now_iso = datetime.now(timezone.utc).isoformat()
 
     cursor.execute("""
-    INSERT INTO facebook_messages (message_id, meta_mid, sender_id, sender_name, platform, message_text, status, received_at)
-    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
-    """, (msg_id, meta_mid, sender_id, sender_name or "Facebook User", platform, message_text, now_iso))
+    INSERT INTO facebook_messages (message_id, meta_mid, sender_id, sender_name, platform, message_text, audio_url, status, received_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    """, (msg_id, meta_mid, sender_id, sender_name or "Facebook User", platform, message_text, audio_url, now_iso))
 
     conn.commit()
     conn.close()
@@ -107,7 +113,7 @@ def enqueue_facebook_message(
     if meta_mid:
         mark_meta_mid_processed(meta_mid)
 
-    logger.info(f"Enqueued Facebook message [{msg_id}] (MID: {meta_mid}) from {sender_id}: '{message_text[:40]}...'")
+    logger.info(f"Enqueued Facebook message [{msg_id}] (MID: {meta_mid}, Audio: {bool(audio_url)}) from {sender_id}: '{message_text[:40]}...'")
     return msg_id
 
 def get_pending_messages(limit: int = 10) -> List[Dict[str, Any]]:
@@ -117,7 +123,7 @@ def get_pending_messages(limit: int = 10) -> List[Dict[str, Any]]:
     cursor = conn.cursor()
 
     cursor.execute("""
-    SELECT message_id, sender_id, sender_name, platform, message_text, received_at
+    SELECT message_id, sender_id, sender_name, platform, message_text, audio_url, received_at
     FROM facebook_messages
     WHERE status = 'pending'
     ORDER BY received_at ASC
@@ -134,7 +140,9 @@ def get_pending_messages(limit: int = 10) -> List[Dict[str, Any]]:
             "sender_name": r[2],
             "platform": r[3],
             "message_text": r[4],
-            "received_at": r[5]
+            "audio_url": r[5],
+            "is_voice_message": bool(r[5]),
+            "received_at": r[6]
         }
         for r in rows
     ]

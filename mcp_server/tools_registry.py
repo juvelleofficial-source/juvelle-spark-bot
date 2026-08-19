@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 MCP_TOOLS_MANIFEST = [
     {
         "name": "get_pending_facebook_messages",
-        "description": "Retrieves pending incoming customer messages received from Facebook Messenger, WhatsApp, or Instagram via Webhooks that require an AI response.",
+        "description": "Retrieves pending incoming customer messages received from Facebook Messenger, WhatsApp, or Instagram via Webhooks that require an AI response. Returns text messages as well as audio_url for customer voice notes so Gemini Spark can listen and transcribe natively with zero API keys.",
         "inputSchema": {
             "type": "object",
             "properties": {
