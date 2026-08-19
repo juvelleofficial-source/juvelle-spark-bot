@@ -34,6 +34,12 @@ def init_mcp_inbox_db() -> None:
     )
     """)
 
+    # Ensure meta_mid column exists if migrating from older schema
+    try:
+        cursor.execute("ALTER TABLE facebook_messages ADD COLUMN meta_mid TEXT")
+    except Exception:
+        pass
+
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_meta_mid ON facebook_messages(meta_mid)")
 
     cursor.execute("""
