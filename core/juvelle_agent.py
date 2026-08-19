@@ -31,7 +31,9 @@ MANGLISH_INDICATORS = {
     "matte", "ithu", "athu", "njan", "nammal", "nammude", "ningal", "valare", "ippol", "eppo", "vannu",
     "vannilla", "kittumo", "kittum", "venam", "venda", "sahayam", "tharam", "ayakkanam", "ayakkamo",
     "undallo", "undath", "cheytholu", "nokkikoloo", "evideya", "aayitt", "ariyatte", "ariyamo", "manasilayi",
-    "onnumilla", "churithar", "churidhar"
+    "onnumilla", "churithar", "churidhar", "topundo", "vilayethra", "ethrayanu", "rateethraya", "kurtiyundo",
+    "namaskaram", "sugamano", "entha", "evidunnu", "kerala", "kochi", "calicut", "kannur", "thrissur", "malappuram",
+    "kazhinjo", "varumo", "ayakkumo", "edukkatte", "nokki", "parayam", "vegam", "pathiye", "angane", "ingane"
 }
 
 HINGLISH_INDICATORS = {

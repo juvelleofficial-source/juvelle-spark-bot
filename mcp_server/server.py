@@ -13,7 +13,8 @@ from mcp_server.message_queue import (
     is_meta_mid_processed,
     mark_meta_mid_processed
 )
-from mcp_server.meta_client import META_VERIFY_TOKEN, send_meta_graph_reply
+from mcp_server.meta_client import META_VERIFY_TOKEN, send_meta_graph_reply, send_meta_sender_action
+from core.audio_processor import download_audio_bytes, transcribe_and_understand_voice_note
 
 logger = logging.getLogger(__name__)
 
@@ -356,10 +357,20 @@ async def process_and_reply_async(sender_id: str, message_text: str, platform: s
     """
     Autonomous background worker that generates a brand-grounded AI reply
     using the Juvelle conversational AI engine and dispatches it immediately via Meta Graph API.
+    Emits real-time typing indicators and mark_seen actions for a native human feel.
     """
     try:
         from core.juvelle_agent import generate_juvelle_reply
         logger.info(f"[AUTONOMOUS AI WORKER] Processing {platform} message from {sender_id}: '{message_text}'")
+
+        # 1. Immediate typing indicator acknowledgement
+        try:
+            send_meta_sender_action(recipient_id=sender_id, action="mark_seen")
+            send_meta_sender_action(recipient_id=sender_id, action="typing_on")
+        except Exception as e_action:
+            logger.debug(f"Typing indicator notice: {e_action}")
+
+        # 2. Generate grounded AI response
         reply_text = generate_juvelle_reply(
             customer_message=message_text,
             session_id=sender_id,
@@ -367,6 +378,7 @@ async def process_and_reply_async(sender_id: str, message_text: str, platform: s
         )
         logger.info(f"[AUTONOMOUS AI WORKER] Generated AI reply for {sender_id}: '{reply_text}'")
 
+        # 3. Dispatch response via Meta Graph API
         result = send_meta_graph_reply(recipient_id=sender_id, message_text=reply_text)
         logger.info(f"[AUTONOMOUS AI WORKER] Meta Graph API dispatch result for {sender_id}: {result}")
     except Exception as e:
@@ -488,6 +500,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                 message = messaging_event.get("message", {})
                 text = message.get("text")
                 mid = message.get("mid")
+                attachments = message.get("attachments", [])
 
                 # Skip echo messages sent by the bot/page itself
                 if message.get("is_echo"):
@@ -497,6 +510,23 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                 if mid and is_meta_mid_processed(mid):
                     logger.info(f"Skipping duplicate messaging event for MID: {mid}")
                     continue
+
+                # Voice Note / Audio Attachment Detection
+                if not text and attachments:
+                    for att in attachments:
+                        att_type = att.get("type", "").lower()
+                        if att_type in ["audio", "voice", "video"]:
+                            audio_url = att.get("payload", {}).get("url") or att.get("file_url")
+                            if audio_url:
+                                logger.info(f"Downloading and decoding voice note from {sender_id}...")
+                                audio_res = download_audio_bytes(audio_url)
+                                if audio_res:
+                                    audio_bytes, mime = audio_res
+                                    text = transcribe_and_understand_voice_note(audio_bytes, mime)
+                                    logger.info(f"Transcribed voice message from {sender_id}: '{text}'")
+                                break
+                    if not text:
+                        text = "Customer sent an Instagram voice message."
 
                 if sender_id and text:
                     if mid:
