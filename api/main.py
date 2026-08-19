@@ -78,10 +78,13 @@ async def startup_event():
     # Start 24/7 keep-alive worker
     asyncio.create_task(keep_alive_background_worker())
 
-    # NOTE: The Render MCP server is a 100% Free Dumb Bridge.
-    # It does NOT call google.genai and requires ZERO Gemini API keys.
-    # Gemini Spark (on gemini.google.com) handles all multimodal voice transcription
-    # and AI reasoning via MCP tools.
+    # Start live autonomous thread worker as fallback to ensure zero dropped messages
+    try:
+        from core.live_thread_worker import live_instagram_poll_worker
+        asyncio.create_task(live_instagram_poll_worker(poll_interval=1.0))
+        logger.info("Started live autonomous Instagram conversation poller.")
+    except Exception as e_poll:
+        logger.warning(f"Could not start live poll worker: {e_poll}")
 
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])

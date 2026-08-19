@@ -353,15 +353,25 @@ async def _broadcast_new_message(sender_id: str, message_text: str, platform: st
         _unregister_sse_session(sid)
     logger.info(f"Broadcast new_message to {len(_ACTIVE_SSE_SESSIONS)} Spark sessions for sender {sender_id}")
 
-async def process_and_reply_async(sender_id: str, message_text: str, platform: str = "instagram"):
+async def process_and_reply_async(
+    sender_id: str,
+    message_text: str,
+    platform: str = "instagram",
+    audio_url: Optional[str] = None,
+    msg_id: Optional[str] = None
+):
     """
     Autonomous background worker that generates a brand-grounded AI reply
     using the Juvelle conversational AI engine and dispatches it immediately via Meta Graph API.
     Emits real-time typing indicators and mark_seen actions for a native human feel.
+    Handles both text DMs and audio voice notes.
     """
     try:
         from core.juvelle_agent import generate_juvelle_reply
-        logger.info(f"[AUTONOMOUS AI WORKER] Processing {platform} message from {sender_id}: '{message_text}'")
+        from core.audio_processor import download_audio_bytes, transcribe_and_understand_voice_note
+        from mcp_server.message_queue import mark_message_replied
+
+        logger.info(f"[AUTONOMOUS AI WORKER] Processing {platform} message from {sender_id} (Audio: {bool(audio_url)}): '{message_text}'")
 
         # 1. Immediate typing indicator acknowledgement
         try:
@@ -370,17 +380,38 @@ async def process_and_reply_async(sender_id: str, message_text: str, platform: s
         except Exception as e_action:
             logger.debug(f"Typing indicator notice: {e_action}")
 
-        # 2. Generate grounded AI response
+        # 2. If voice note audio_url is present, transcribe it
+        customer_query = message_text
+        if audio_url:
+            logger.info(f"[AUTONOMOUS AI WORKER] Downloading voice note for transcription: {audio_url}")
+            audio_res = download_audio_bytes(audio_url)
+            if audio_res:
+                audio_bytes, mime = audio_res
+                transcript = transcribe_and_understand_voice_note(audio_bytes, mime)
+                if transcript:
+                    logger.info(f"[AUTONOMOUS AI WORKER] Voice note transcribed: '{transcript}'")
+                    customer_query = transcript
+                else:
+                    customer_query = "Customer sent a voice note inquiring about Juvelle daily and office wear churidar tops."
+            else:
+                customer_query = "Customer sent a voice note inquiring about Juvelle daily and office wear churidar tops."
+
+        # 3. Generate grounded AI response
         reply_text = generate_juvelle_reply(
-            customer_message=message_text,
+            customer_message=customer_query,
             session_id=sender_id,
             customer_name=sender_id
         )
         logger.info(f"[AUTONOMOUS AI WORKER] Generated AI reply for {sender_id}: '{reply_text}'")
 
-        # 3. Dispatch response via Meta Graph API
+        # 4. Dispatch response via Meta Graph API
         result = send_meta_graph_reply(recipient_id=sender_id, message_text=reply_text)
         logger.info(f"[AUTONOMOUS AI WORKER] Meta Graph API dispatch result for {sender_id}: {result}")
+
+        # 5. Mark as replied in queue
+        if msg_id:
+            mark_message_replied(message_id=msg_id, ai_reply=reply_text)
+
     except Exception as e:
         logger.error(f"[AUTONOMOUS AI WORKER] Error processing auto-reply for {sender_id}: {e}", exc_info=True)
 
@@ -529,7 +560,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     event_entry["sender_id"] = sender_id
                     event_entry["text"] = text or "[Voice Message]"
                     event_entry["status"] = "QUEUED_FOR_SPARK"
-                    enqueue_facebook_message(
+                    msg_id = enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text or "[Voice Message]",
                         platform=platform_name,
@@ -538,12 +569,15 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     )
                     logger.info(f"Enqueued {platform_name} message from {sender_id} (MID: {mid}, Audio: {bool(audio_link)}): '{text}'")
                     await _broadcast_new_message(sender_id, text or "[Voice Message]", platform_name)
-                    # Send immediate typing acknowledgement
-                    try:
-                        send_meta_sender_action(recipient_id=sender_id, action="mark_seen")
-                        send_meta_sender_action(recipient_id=sender_id, action="typing_on")
-                    except Exception:
-                        pass
+                    # Trigger autonomous AI worker to reply immediately
+                    background_tasks.add_task(
+                        process_and_reply_async,
+                        sender_id,
+                        text or "[Voice Message]",
+                        platform_name,
+                        audio_link,
+                        msg_id
+                    )
 
             # 2. Check standby array
             for standby_event in entry.get("standby", []):
@@ -562,13 +596,21 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                     event_entry["sender_id"] = sender_id
                     event_entry["text"] = text
                     event_entry["status"] = "STANDBY_QUEUED"
-                    enqueue_facebook_message(
+                    msg_id = enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
                         platform=platform_name,
                         meta_mid=mid
                     )
                     await _broadcast_new_message(sender_id, text, platform_name)
+                    background_tasks.add_task(
+                        process_and_reply_async,
+                        sender_id,
+                        text,
+                        platform_name,
+                        None,
+                        msg_id
+                    )
 
             # 3. Check changes array (alternative Instagram Graph Webhooks format)
             for change in entry.get("changes", []):
@@ -590,7 +632,7 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                         event_entry["sender_id"] = str(sender_id)
                         event_entry["text"] = str(text)
                         event_entry["status"] = "CHANGES_QUEUED"
-                        enqueue_facebook_message(
+                        msg_id = enqueue_facebook_message(
                             sender_id=str(sender_id),
                             message_text=str(text),
                             platform=platform_name,
@@ -598,6 +640,14 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                         )
                         logger.info(f"Enqueued {platform_name} message from changes ({sender_id}, MID: {mid}): '{text}'")
                         await _broadcast_new_message(str(sender_id), str(text), platform_name)
+                        background_tasks.add_task(
+                            process_and_reply_async,
+                            str(sender_id),
+                            str(text),
+                            platform_name,
+                            None,
+                            msg_id
+                        )
 
         WEBHOOK_LOGS.append(event_entry)
         if len(WEBHOOK_LOGS) > 100:
