@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 DB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_PATH = os.path.join(DB_DIR, "mcp_inbox.db")
 
+_PROCESSED_META_MIDS: set = set()
+
 def init_mcp_inbox_db() -> None:
     """Initializes SQLite database for Facebook/Meta incoming messages and MCP queue."""
     os.makedirs(DB_DIR, exist_ok=True)
@@ -20,6 +22,7 @@ def init_mcp_inbox_db() -> None:
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS facebook_messages (
         message_id TEXT PRIMARY KEY,
+        meta_mid TEXT,
         sender_id TEXT NOT NULL,
         sender_name TEXT,
         platform TEXT DEFAULT 'messenger',
@@ -30,6 +33,8 @@ def init_mcp_inbox_db() -> None:
         replied_at DATETIME
     )
     """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_meta_mid ON facebook_messages(meta_mid)")
 
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS customer_crm_notes (
@@ -43,7 +48,40 @@ def init_mcp_inbox_db() -> None:
     conn.commit()
     conn.close()
 
-def enqueue_facebook_message(sender_id: str, message_text: str, sender_name: Optional[str] = None, platform: str = "messenger") -> str:
+def is_meta_mid_processed(mid: Optional[str]) -> bool:
+    """Checks if a Meta Message ID (mid) has already been processed or enqueued."""
+    if not mid:
+        return False
+    if mid in _PROCESSED_META_MIDS:
+        return True
+    try:
+        init_mcp_inbox_db()
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM facebook_messages WHERE meta_mid = ?", (mid,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            _PROCESSED_META_MIDS.add(mid)
+            return True
+    except Exception:
+        pass
+    return False
+
+def mark_meta_mid_processed(mid: Optional[str]) -> None:
+    """Registers a mid into in-memory processed deduplication cache."""
+    if mid:
+        _PROCESSED_META_MIDS.add(mid)
+        if len(_PROCESSED_META_MIDS) > 5000:
+            _PROCESSED_META_MIDS.clear()
+
+def enqueue_facebook_message(
+    sender_id: str,
+    message_text: str,
+    sender_name: Optional[str] = None,
+    platform: str = "messenger",
+    meta_mid: Optional[str] = None
+) -> str:
     """Enqueues an incoming message received via Meta Webhook."""
     init_mcp_inbox_db()
     conn = sqlite3.connect(DB_PATH)
@@ -53,13 +91,17 @@ def enqueue_facebook_message(sender_id: str, message_text: str, sender_name: Opt
     now_iso = datetime.now(timezone.utc).isoformat()
 
     cursor.execute("""
-    INSERT INTO facebook_messages (message_id, sender_id, sender_name, platform, message_text, status, received_at)
-    VALUES (?, ?, ?, ?, ?, 'pending', ?)
-    """, (msg_id, sender_id, sender_name or "Facebook User", platform, message_text, now_iso))
+    INSERT INTO facebook_messages (message_id, meta_mid, sender_id, sender_name, platform, message_text, status, received_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+    """, (msg_id, meta_mid, sender_id, sender_name or "Facebook User", platform, message_text, now_iso))
 
     conn.commit()
     conn.close()
-    logger.info(f"Enqueued Facebook message [{msg_id}] from {sender_id}: '{message_text[:40]}...'")
+
+    if meta_mid:
+        mark_meta_mid_processed(meta_mid)
+
+    logger.info(f"Enqueued Facebook message [{msg_id}] (MID: {meta_mid}) from {sender_id}: '{message_text[:40]}...'")
     return msg_id
 
 def get_pending_messages(limit: int = 10) -> List[Dict[str, Any]]:

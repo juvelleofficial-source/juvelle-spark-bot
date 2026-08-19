@@ -7,7 +7,12 @@ from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse
 from sse_starlette.sse import EventSourceResponse
 
 from mcp_server.tools_registry import MCP_TOOLS_MANIFEST, execute_mcp_tool
-from mcp_server.message_queue import enqueue_facebook_message, mark_message_replied
+from mcp_server.message_queue import (
+    enqueue_facebook_message,
+    mark_message_replied,
+    is_meta_mid_processed,
+    mark_meta_mid_processed
+)
 from mcp_server.meta_client import META_VERIFY_TOKEN, send_meta_graph_reply
 
 logger = logging.getLogger(__name__)
@@ -482,34 +487,56 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                 sender_id = messaging_event.get("sender", {}).get("id")
                 message = messaging_event.get("message", {})
                 text = message.get("text")
+                mid = message.get("mid")
 
                 # Skip echo messages sent by the bot/page itself
                 if message.get("is_echo"):
                     logger.info(f"Skipping echo message for {sender_id}")
                     continue
 
+                if mid and is_meta_mid_processed(mid):
+                    logger.info(f"Skipping duplicate messaging event for MID: {mid}")
+                    continue
+
                 if sender_id and text:
+                    if mid:
+                        mark_meta_mid_processed(mid)
                     event_entry["sender_id"] = sender_id
                     event_entry["text"] = text
                     event_entry["status"] = "QUEUED_FOR_REPLY"
                     enqueue_facebook_message(
                         sender_id=sender_id,
                         message_text=text,
-                        platform=platform_name
+                        platform=platform_name,
+                        meta_mid=mid
                     )
-                    logger.info(f"Enqueued {platform_name} message from {sender_id}: '{text}'")
+                    logger.info(f"Enqueued {platform_name} message from {sender_id} (MID: {mid}): '{text}'")
                     await _broadcast_new_message(sender_id, text, platform_name)
                     background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
             # 2. Check standby array
             for standby_event in entry.get("standby", []):
                 sender_id = standby_event.get("sender", {}).get("id")
-                text = standby_event.get("message", {}).get("text")
+                message = standby_event.get("message", {})
+                text = message.get("text")
+                mid = message.get("mid")
+
+                if mid and is_meta_mid_processed(mid):
+                    logger.info(f"Skipping duplicate standby event for MID: {mid}")
+                    continue
+
                 if sender_id and text:
+                    if mid:
+                        mark_meta_mid_processed(mid)
                     event_entry["sender_id"] = sender_id
                     event_entry["text"] = text
                     event_entry["status"] = "STANDBY_QUEUED"
-                    enqueue_facebook_message(sender_id=sender_id, message_text=text, platform=platform_name)
+                    enqueue_facebook_message(
+                        sender_id=sender_id,
+                        message_text=text,
+                        platform=platform_name,
+                        meta_mid=mid
+                    )
                     await _broadcast_new_message(sender_id, text, platform_name)
                     background_tasks.add_task(process_and_reply_async, sender_id, text, platform_name)
 
@@ -519,17 +546,27 @@ async def receive_facebook_webhook(request: Request, background_tasks: Backgroun
                 value = change.get("value", {})
                 if field in ["messages", "messaging_postbacks"] or "messages" in change:
                     sender_id = value.get("sender", {}).get("id") or value.get("from", {}).get("id") or value.get("from")
-                    text = value.get("message", {}).get("text") or value.get("text") or (value.get("messages", [{}])[0].get("text", {}).get("body") if isinstance(value.get("messages"), list) and value.get("messages") else None)
+                    message_obj = value.get("message", {})
+                    text = message_obj.get("text") or value.get("text") or (value.get("messages", [{}])[0].get("text", {}).get("body") if isinstance(value.get("messages"), list) and value.get("messages") else None)
+                    mid = message_obj.get("mid") or value.get("mid")
+
+                    if mid and is_meta_mid_processed(mid):
+                        logger.info(f"Skipping duplicate changes event for MID: {mid}")
+                        continue
+
                     if sender_id and text:
+                        if mid:
+                            mark_meta_mid_processed(mid)
                         event_entry["sender_id"] = str(sender_id)
                         event_entry["text"] = str(text)
                         event_entry["status"] = "CHANGES_QUEUED"
                         enqueue_facebook_message(
                             sender_id=str(sender_id),
                             message_text=str(text),
-                            platform=platform_name
+                            platform=platform_name,
+                            meta_mid=mid
                         )
-                        logger.info(f"Enqueued {platform_name} message from changes ({sender_id}): '{text}'")
+                        logger.info(f"Enqueued {platform_name} message from changes ({sender_id}, MID: {mid}): '{text}'")
                         await _broadcast_new_message(str(sender_id), str(text), platform_name)
                         background_tasks.add_task(process_and_reply_async, str(sender_id), str(text), platform_name)
 

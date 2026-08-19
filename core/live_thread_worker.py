@@ -7,6 +7,7 @@ import time
 from core.juvelle_agent import generate_juvelle_reply
 from core.audio_processor import download_audio_bytes, transcribe_and_understand_voice_note
 from mcp_server.meta_client import send_meta_graph_reply, _get_token
+from mcp_server.message_queue import is_meta_mid_processed, mark_meta_mid_processed
 
 logger = logging.getLogger("LiveThreadWorker")
 
@@ -69,9 +70,10 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
                     text = latest.get("message", "")
                     attachments = latest.get("attachments", {}).get("data", [])
                     
-                    if msg_id and msg_id not in _PROCESSED_MESSAGE_IDS:
+                    if msg_id and msg_id not in _PROCESSED_MESSAGE_IDS and not is_meta_mid_processed(msg_id):
                         _PROCESSED_MESSAGE_IDS.add(msg_id)
-                        
+                        mark_meta_mid_processed(msg_id)
+
                         if sender_username != "juvelle.store":
                             t_start = time.time()
                             
