@@ -89,8 +89,9 @@ def transcribe_and_understand_voice_note(audio_bytes: bytes, mime_type: Optional
         prompt = (
             "You are an expert multilingual audio perception and transcription engine for Instagram DMs. "
             "Listen to this customer voice note. "
-            "Accurately transcribe the spoken words into Latin/English alphabet transliteration "
-            "(Manglish for Malayalam, Hinglish for Hindi, Tanglish for Tamil, English for English). "
+            "Accurately transcribe the spoken words into Latin/English alphabet transliteration: "
+            "Manglish for Malayalam, Hinglish for Hindi, and natural English for English. "
+            "If another language is spoken, transcribe into English. "
             "Return ONLY the Latin alphabet transcription without native Unicode scripts, preambles, or quotes."
         )
         

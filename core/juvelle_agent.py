@@ -383,7 +383,7 @@ def generate_live_neural_reply(
     if retrieved_chunks:
         rag_context = "\nRelevant Juvelle Brand Knowledge:\n" + "\n".join([f"- {c['content']}" for c in retrieved_chunks])
 
-    # 4. Formulate Strict Language Directive
+    # 4. Formulate Strict Language Directive (Strictly 5 Allowed Categories)
     if detected_lang == "english":
         lang_directive = (
             "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in ENGLISH. "
@@ -400,20 +400,10 @@ def generate_live_neural_reply(
             "CRITICAL LANGUAGE ENFORCEMENT: The customer is typing in HINDI SCRIPT (Devanagari). "
             "You MUST reply in polite, clean Hindi in Devanagari script."
         )
-    elif detected_lang == "tamil_script":
-        lang_directive = (
-            "CRITICAL LANGUAGE ENFORCEMENT: The customer is typing in TAMIL SCRIPT. "
-            "You MUST reply in polite Tamil script only."
-        )
     elif detected_lang == "hinglish":
         lang_directive = (
             "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in HINGLISH (Hindi in English letters, e.g. 'kya price hai', 'cotton top dikhao'). "
             "You MUST reply in natural, polite HINGLISH using ONLY 100% English alphabet letters."
-        )
-    elif detected_lang == "tanglish":
-        lang_directive = (
-            "CRITICAL LANGUAGE ENFORCEMENT: The customer is speaking in TANGLISH (Tamil in English letters, e.g. 'kurti irukka', 'price evvalavu'). "
-            "You MUST reply in natural, polite TANGLISH using ONLY 100% English alphabet letters."
         )
     elif detected_lang == "manglish":
         lang_directive = (
@@ -422,8 +412,7 @@ def generate_live_neural_reply(
         )
     else:
         lang_directive = (
-            f"CRITICAL LANGUAGE ENFORCEMENT: The customer is communicating in '{detected_lang}'. "
-            f"Seamlessly mirror and reply in the customer's exact language and dialect."
+            "CRITICAL LANGUAGE ENFORCEMENT: Reply in natural ENGLISH."
         )
 
     # 5. Formulate Session Lifecycle & Greeting Directive
@@ -442,16 +431,6 @@ def generate_live_neural_reply(
             lifecycle_directive = (
                 "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Hindi and introduce the brand: "
                 "'नमस्ते! Juvelle में आपका स्वागत है। हम डेली और ऑफिस वियर चूड़ीदार टॉप्स में स्पेशलाइज करते हैं। मैं आपकी क्या मदद कर सकता हूँ?'"
-            )
-        elif detected_lang == "tanglish":
-            lifecycle_directive = (
-                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Tanglish and introduce the brand: "
-                "'Hey there! Welcome to Juvelle. Nanga daily and office wear Churidar topsla specialize panrom. Eppadi help panradhu?'"
-            )
-        elif detected_lang == "tamil_script":
-            lifecycle_directive = (
-                "SESSION DIRECTIVE: FIRST CONTACT (Turn 1). Greet warmly in Tamil and introduce the brand: "
-                "'வணக்கம்! Juvelle-க்கு நல்வரவு. நாங்கள் டெய்லி மற்றும் ஆபீஸ் வேர் சுடிதார் டாப்களில் ஸ்பெஷலைஸ் செய்கிறோம். எப்படி உதவ வேண்டும்?'"
             )
         elif detected_lang == "malayalam_script":
             lifecycle_directive = (
@@ -473,6 +452,16 @@ def generate_live_neural_reply(
             lifecycle_directive = (
                 "SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity). "
                 "Start your reply in Hinglish by welcoming them back warmly: 'Welcome back to Juvelle! Kaise help karoon?' before answering."
+            )
+        elif detected_lang == "hindi_script":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity). "
+                "Start your reply in Hindi by welcoming them back warmly: 'Juvelle में आपका स्वागत है! बताइए क्या सहायता चाहिए?' before answering."
+            )
+        elif detected_lang == "malayalam_script":
+            lifecycle_directive = (
+                "SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity). "
+                "Start your reply in Malayalam script by welcoming them back warmly: 'Juvelle-ലേക്ക് സ്വാഗതം! എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?' before answering."
             )
         else:
             lifecycle_directive = (
@@ -550,13 +539,13 @@ def generate_live_neural_reply(
         return "Welcome back to Juvelle! Enganeya help cheyyendath?"
     
     if detected_lang == "english":
-        return "We specialize exclusively in women's Churidar tops (₹399–₹899). How can I help you with our collection today?"
+        return "We specialize exclusively in women's Churidar tops (₹399–₹899). How can I help you today?"
     elif detected_lang == "hinglish":
-        return "Hum exclusively women's Churidar tops (₹399–₹899) offer karte hain. Kaise help karoon?"
+        return "Hum exclusively women's Churidar tops (₹399–₹899) offer karte hain. Kaise madad karoon?"
     elif detected_lang == "hindi_script":
         return "हम मुख्य रूप से विमेंस चूड़ीदार टॉप्स (₹399–₹899) में डील करते हैं। बताइए क्या सहायता चाहिए?"
-    elif detected_lang == "tanglish":
-        return "Nanga exclusively women's Churidar tops (₹399–₹899) specialize panrom. Eppadi help panradhu?"
+    elif detected_lang == "malayalam_script":
+        return "ഞങ്ങൾ പ്രധാനമായും വനിതകളുടെ ചുരിദാർ ടോപ്പുകളിൽ (₹399–₹899) മാത്രമാണ് ഡീൽ ചെയ്യുന്നത്. എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?"
     return "Nammal women's Churidar topsil (₹399–₹899) aanu specialize cheyyunnath. Enganeya help cheyyendath?"
 
 def generate_juvelle_response(

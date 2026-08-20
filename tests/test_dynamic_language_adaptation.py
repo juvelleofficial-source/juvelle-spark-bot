@@ -12,8 +12,8 @@ class TestDynamicLanguageAdaptation(unittest.TestCase):
 
     def test_voice_message_latin_script_defaults(self):
         """
-        Verify voice notes in Malayalam, Hindi, or Tamil default to Latin transliteration
-        (Manglish, Hinglish, Tanglish).
+        Verify voice notes in Malayalam or Hindi default to Latin transliteration
+        (Manglish, Hinglish) unless the user explicitly typed in native script previously.
         """
         # Spoken Malayalam transcribed in Malayalam or phonetics -> should detect manglish for voice
         self.assertEqual(detect_query_language("മലയാളത്തിൽ ടോപ്സ് ഉണ്ടോ?", is_voice=True), "manglish")
@@ -22,10 +22,6 @@ class TestDynamicLanguageAdaptation(unittest.TestCase):
         # Spoken Hindi -> should detect hinglish for voice
         self.assertEqual(detect_query_language("क्या आपके पास कॉटन कुर्ती है?", is_voice=True), "hinglish")
         self.assertEqual(detect_query_language("kya price hai bhai?", is_voice=True), "hinglish")
-
-        # Spoken Tamil -> should detect tanglish for voice
-        self.assertEqual(detect_query_language("சுடிதார் இருக்கா?", is_voice=True), "tanglish")
-        self.assertEqual(detect_query_language("kurti evvalavu rate?", is_voice=True), "tanglish")
 
         # Spoken English -> should detect english for voice
         self.assertEqual(detect_query_language("Do you deliver to Kerala?", is_voice=True), "english")
@@ -40,16 +36,12 @@ class TestDynamicLanguageAdaptation(unittest.TestCase):
         # Typed Hindi Devanagari Script -> hindi_script
         self.assertEqual(detect_query_language("क्या आप केरल में डिलीवरी करते हैं?", is_voice=False), "hindi_script")
 
-        # Typed Tamil Script -> tamil_script
-        self.assertEqual(detect_query_language("சுடிதார் என்ன விலை?", is_voice=False), "tamil_script")
-
     def test_text_message_transliteration_mirroring(self):
         """
-        Verify typed Latin transliterations (Manglish, Hinglish, Tanglish) are detected properly.
+        Verify typed Latin transliterations (Manglish, Hinglish) are detected properly.
         """
         self.assertEqual(detect_query_language("Keralathil delivery undo?", is_voice=False), "manglish")
         self.assertEqual(detect_query_language("Bhai daily wear tops ka rate kya hai?", is_voice=False), "hinglish")
-        self.assertEqual(detect_query_language("Kurti collection irukka?", is_voice=False), "tanglish")
         self.assertEqual(detect_query_language("Do you have cotton tops?", is_voice=False), "english")
 
     def test_dynamic_turn_by_turn_switching(self):
