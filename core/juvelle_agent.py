@@ -13,9 +13,9 @@ logger = logging.getLogger("JuvelleAgent")
 
 CANDIDATE_MODELS = [
     "gemini-flash-lite-latest",
-    "gemini-3.5-flash-lite",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash"
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash"
 ]
 
 GREETING_WORDS = {
@@ -294,8 +294,8 @@ def sanitize_manglish_response(text: str, target_language: str = "manglish") -> 
     # 1. Strip unwanted decorative emoji spam (e.g. ✨, 🌸, 💫, 🌟)
     text = re.sub(r'[\u2728\U0001F338\U0001F4AB\U0001F31F\U0001F33C\U0001F389]+', '', text)
 
-    if target_language == "english":
-        # For English, just clean up whitespace and hyphens
+    if target_language in ["english", "hindi_script", "malayalam_script", "tamil_script", "telugu_script"]:
+        # For English and native scripts, just clean up whitespace and hyphens without stripping native characters
         text = re.sub(r' +', ' ', text).strip()
         return text
 

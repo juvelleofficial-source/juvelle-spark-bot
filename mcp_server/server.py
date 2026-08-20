@@ -363,9 +363,25 @@ async def process_and_reply_async(
     """
     Autonomous background worker that generates a brand-grounded AI reply
     using the Juvelle conversational AI engine and dispatches it immediately via Meta Graph API.
-    Emits real-time typing indicators and mark_seen actions for a native human feel.
+    Runs continuous dynamic typing indicators while processing so users always see the bot is typing.
     Handles both text DMs and audio voice notes.
     """
+    # Start continuous dynamic typing indicator in background task
+    typing_active = True
+    async def _dynamic_typing_loop():
+        try:
+            send_meta_sender_action(recipient_id=sender_id, action="mark_seen")
+        except Exception:
+            pass
+        while typing_active:
+            try:
+                send_meta_sender_action(recipient_id=sender_id, action="typing_on")
+            except Exception as e_typing:
+                logger.debug(f"Dynamic typing indicator ping notice: {e_typing}")
+            await asyncio.sleep(4.0)
+
+    typing_task = asyncio.create_task(_dynamic_typing_loop())
+
     try:
         from core.juvelle_agent import generate_juvelle_reply
         from core.audio_processor import download_audio_bytes, transcribe_and_understand_voice_note
@@ -373,14 +389,7 @@ async def process_and_reply_async(
 
         logger.info(f"[AUTONOMOUS AI WORKER] Processing {platform} message from {sender_id} (Audio: {bool(audio_url)}): '{message_text}'")
 
-        # 1. Immediate typing indicator acknowledgement
-        try:
-            send_meta_sender_action(recipient_id=sender_id, action="mark_seen")
-            send_meta_sender_action(recipient_id=sender_id, action="typing_on")
-        except Exception as e_action:
-            logger.debug(f"Typing indicator notice: {e_action}")
-
-        # 2. If voice note audio_url is present, transcribe it
+        # 1. If voice note audio_url is present, transcribe it
         customer_query = message_text
         if audio_url:
             logger.info(f"[AUTONOMOUS AI WORKER] Downloading voice note for transcription: {audio_url}")
@@ -396,7 +405,7 @@ async def process_and_reply_async(
             else:
                 customer_query = "Customer sent a voice note inquiring about Juvelle daily and office wear churidar tops."
 
-        # 3. Generate grounded AI response
+        # 2. Generate grounded AI response
         reply_text = generate_juvelle_reply(
             customer_message=customer_query,
             session_id=sender_id,
@@ -405,15 +414,24 @@ async def process_and_reply_async(
         )
         logger.info(f"[AUTONOMOUS AI WORKER] Generated AI reply for {sender_id}: '{reply_text}'")
 
-        # 4. Dispatch response via Meta Graph API
+        # 3. Stop typing and dispatch response via Meta Graph API
+        typing_active = False
+        typing_task.cancel()
+        try:
+            send_meta_sender_action(recipient_id=sender_id, action="typing_off")
+        except Exception:
+            pass
+
         result = send_meta_graph_reply(recipient_id=sender_id, message_text=reply_text)
         logger.info(f"[AUTONOMOUS AI WORKER] Meta Graph API dispatch result for {sender_id}: {result}")
 
-        # 5. Mark as replied in queue
+        # 4. Mark as replied in queue
         if msg_id:
             mark_message_replied(message_id=msg_id, ai_reply=reply_text)
 
     except Exception as e:
+        typing_active = False
+        typing_task.cancel()
         logger.error(f"[AUTONOMOUS AI WORKER] Error processing auto-reply for {sender_id}: {e}", exc_info=True)
 
 # Ring buffer for live webhook telemetry (in-memory + diagnostic)
