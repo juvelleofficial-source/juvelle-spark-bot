@@ -5,15 +5,16 @@ from memory.long_term_memory import upsert_customer_crm, get_customer_crm
 
 logger = logging.getLogger(__name__)
 
-# Extraction Rules & Dictionaries
+# Extraction Rules & Dictionaries - Require explicit size cues to avoid false positives on contractions like "I'm"
 SIZE_PATTERNS = [
-    (r"\b(xxxl|3xl)\b", "3XL"),
-    (r"\b(xxl|2xl)\b", "XXL"),
-    (r"\b(xl)\b", "XL"),
-    (r"\b(l|large)\b", "L"),
-    (r"\b(m|medium)\b", "M"),
-    (r"\b(s|small)\b", "S"),
-    (r"\b(xs)\b", "XS"),
+    (r"\b(size\s*:?\s*)?(xxxl|3xl)\b", "3XL"),
+    (r"\b(size\s*:?\s*)?(xxl|2xl)\b", "XXL"),
+    (r"\b(size\s*:?\s*)?(xl)\b", "XL"),
+    (r"\b(size\s*:?\s*)?(large)\b", "L"),
+    (r"\b(size\s*:?\s*)?(medium)\b", "M"),
+    (r"\b(size\s*:?\s*)?(small)\b", "S"),
+    (r"\b(size\s*:?\s*)?(xs)\b", "XS"),
+    (r"(?<![a-zA-Z'])\b(size\s+m|m\s+size|size\s+l|l\s+size|size\s+s|s\s+size|size\s+xl|xl\s+size)\b", "DETECT_COMPOUND"),
 ]
 
 FABRIC_KEYWORDS = ["cotton", "rayon", "chiffon", "silk", "linen", "georgette"]
@@ -79,11 +80,27 @@ def analyze_and_profile_customer(user_id: str, message: str) -> Dict[str, Any]:
     """
     msg_clean = message.lower()
 
-    # 1. Size Extraction
+    # 1. Size Extraction (Clean compound and avoid contractions like I'm)
     detected_size: Optional[str] = None
     for pattern, size_val in SIZE_PATTERNS:
-        if re.search(pattern, msg_clean, re.IGNORECASE):
-            detected_size = size_val
+        m_match = re.search(pattern, msg_clean, re.IGNORECASE)
+        if m_match:
+            if size_val == "DETECT_COMPOUND":
+                matched_str = m_match.group(0).lower()
+                if "xxxl" in matched_str or "3xl" in matched_str:
+                    detected_size = "3XL"
+                elif "xxl" in matched_str or "2xl" in matched_str:
+                    detected_size = "XXL"
+                elif "xl" in matched_str:
+                    detected_size = "XL"
+                elif "large" in matched_str or "size l" in matched_str or "l size" in matched_str:
+                    detected_size = "L"
+                elif "medium" in matched_str or "size m" in matched_str or "m size" in matched_str:
+                    detected_size = "M"
+                elif "small" in matched_str or "size s" in matched_str or "s size" in matched_str:
+                    detected_size = "S"
+            else:
+                detected_size = size_val
             break
 
     # 2. Fabric Extraction

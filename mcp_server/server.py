@@ -400,7 +400,8 @@ async def process_and_reply_async(
         reply_text = generate_juvelle_reply(
             customer_message=customer_query,
             session_id=sender_id,
-            customer_name=sender_id
+            customer_name=sender_id,
+            is_voice=bool(audio_url)
         )
         logger.info(f"[AUTONOMOUS AI WORKER] Generated AI reply for {sender_id}: '{reply_text}'")
 

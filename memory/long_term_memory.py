@@ -244,7 +244,7 @@ def upsert_customer_crm(
     if row:
         curr_size, curr_fabric, curr_lang, curr_loc, curr_stage, curr_turns, curr_tags_str, curr_notes = row
         new_size = preferred_size or curr_size
-        new_fabric = preferred_fabric or curr_fabric
+        new_fabric = preferred_fabric  # Do not stick/pin old fabric/design if customer asks about new ones
         new_lang = preferred_language or curr_lang or "english"
         new_loc = location or curr_loc
         new_stage = stage or curr_stage

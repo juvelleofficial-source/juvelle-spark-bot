@@ -52,11 +52,13 @@ TANGLISH_INDICATORS = {
 def detect_query_language(
     message: str,
     history: Optional[List[Dict[str, Any]]] = None,
-    preferred_language: Optional[str] = None
+    preferred_language: Optional[str] = None,
+    is_voice: bool = False
 ) -> str:
     """
     Deterministically detects customer language and script across English, Manglish, Malayalam,
     Hinglish, Hindi, Tanglish, Tamil, Telugu, Kannada, Arabic, and universal polyglot inputs.
+    Supports instant turn-by-turn dynamic switching and voice message Latin transliteration defaults.
     """
     if not message or not message.strip():
         return preferred_language or "english"
@@ -74,16 +76,26 @@ def detect_query_language(
     }
     dominant_script, max_count = max(script_counts.items(), key=lambda x: x[1])
     if max_count >= 2:
+        if is_voice:
+            # Voice messages default to Latin transliteration for Indian regional languages
+            if dominant_script == "malayalam_script":
+                return "manglish"
+            elif dominant_script == "hindi_script":
+                return "hinglish"
+            elif dominant_script == "tamil_script":
+                return "tanglish"
         return dominant_script
 
     words = set(re.findall(r'[a-zA-Z]+', msg_clean))
 
-    manglish_count = len(words.intersection(MANGLISH_INDICATORS))
+    # Distinctive regional grammar markers (excluding generic geographic names like "kerala")
+    manglish_grammar_words = MANGLISH_INDICATORS - {"kerala", "kochi", "calicut", "kannur", "thrissur", "malappuram"}
+    manglish_count = len(words.intersection(manglish_grammar_words))
     hinglish_count = len(words.intersection(HINGLISH_INDICATORS))
     tanglish_count = len(words.intersection(TANGLISH_INDICATORS))
 
     # If clothing terms match but with clear English grammar words
-    if manglish_count > 0 and words.intersection(MANGLISH_INDICATORS).issubset({"churithar", "churidhar"}):
+    if manglish_count > 0 and words.intersection(manglish_grammar_words).issubset({"churithar", "churidhar"}):
         if words.intersection({"only", "for", "do", "you", "u", "have", "is", "are", "what", "show", "me", "how", "much", "needed", "need", "nephew", "t-shirt", "shirt"}):
             return "english"
 
@@ -95,17 +107,17 @@ def detect_query_language(
         elif manglish_count >= hinglish_count and manglish_count >= tanglish_count:
             return "manglish"
 
-    # Contextual memory inheritance from previous conversational turns
-    if history:
-        for turn in reversed(history):
+    # Contextual memory inheritance ONLY for ambiguous single-word responses (e.g. "ok", "yes", "s", "m")
+    AMBIGUOUS_SHORT_WORDS = {"ok", "okay", "yes", "no", "sure", "fine", "done", "s", "m", "l", "xl", "xxl", "3xl", "hai", "k", "kk"}
+    if msg_clean in AMBIGUOUS_SHORT_WORDS and history:
+        # Check immediately preceding user turn only (not walking back indefinitely)
+        for turn in reversed(history[-2:]):
             if turn.get("role") == "user":
                 prev_text = turn.get("content", "")
-                prev_lang = detect_query_language(prev_text, history=None, preferred_language=None)
-                if prev_lang not in ["english"]:
-                    return prev_lang
-
-    if preferred_language:
-        return preferred_language
+                if prev_text.lower().strip() != msg_clean:
+                    prev_lang = detect_query_language(prev_text, history=None, preferred_language=None, is_voice=is_voice)
+                    if prev_lang:
+                        return prev_lang
 
     return "english"
 
@@ -192,16 +204,21 @@ JUVELLE_SYSTEM_PROMPT = """You are the friendly, professional, and helpful Custo
 - Ask at most ONE simple closing question only when strictly necessary (e.g. "Which size are you looking for?" / "Ethu size aanu nokkunnath?").
 
 # Universal Polyglot & Language Mirroring Protocol (CRITICAL):
-- STRICT LANGUAGE MIRRORING:
-  - You MUST mirror the exact language, dialect, and transliteration used by the customer!
-  - When the customer speaks/types in English -> Reply in 100% fluent, professional English.
-  - When the customer speaks/types in Manglish -> Reply in natural Manglish (English letters only, no hyphens, natural Malayalam transliteration).
-  - When the customer writes in Malayalam Script -> Reply in clean Malayalam script.
-  - When the customer speaks/types in Hinglish -> Reply in natural, friendly Hinglish using English alphabet letters (e.g., 'Hamare paas pure cotton daily wear tops ₹399 se shuru hote hain. Kaunsa size chahiye?').
-  - When the customer writes in Hindi Script (Devanagari) -> Reply in polite Hindi script.
-  - When the customer speaks/types in Tanglish -> Reply in natural Tanglish (Tamil in English alphabet).
-  - When the customer writes in Tamil Script -> Reply in Tamil script.
-  - When the customer uses Telugu, Kannada, Arabic, or any other language -> Reply in that customer's exact language & script!
+- STRICT SCRIPT & LANGUAGE MIRRORING:
+  - FOR VOICE NOTES / AUDIO:
+    - If customer speaks Malayalam -> Reply in natural MANGLISH (Latin alphabet, e.g., 'Athey, Churidar tops available aanu...').
+    - If customer speaks Hindi -> Reply in natural HINGLISH (Latin alphabet, e.g., 'Haan, Churidar tops available hain...').
+    - If customer speaks Tamil -> Reply in natural TANGLISH (Latin alphabet, e.g., 'Aama, Churidar tops irukku...').
+    - If customer speaks English -> Reply in natural ENGLISH.
+  - FOR TYPED TEXT MESSAGES:
+    - If customer writes in Native Script (Malayalam മലയാളം, Hindi Devanagari हिंदी, Tamil தமிழ்) -> Reply in that EXACT NATIVE SCRIPT.
+    - If customer writes in Latin Transliteration (Manglish, Hinglish, Tanglish) -> Reply in matching Latin Transliteration.
+    - If customer writes in English -> Reply in English.
+  - DYNAMIC TURN-BY-TURN SWITCHING:
+    - The customer (or different users in the chat) may switch languages turn-by-turn (e.g. Manglish -> Hindi -> English). Always adapt immediately to the language and script of the latest message!
+- NO UNSOLICITED SIZE, LOCATION, OR DESIGN PINNING (STRICT):
+  - NEVER mention or assume previously stored sizes (e.g. Size M, Size S), locations (e.g. Ernakulam, Kochi), or specific past designs unless the customer EXPLICITLY asks about sizing, their order, or delivery in their CURRENT message!
+  - Do NOT lock or restrict the customer to previously inquired designs or colors. Keep every inquiry fresh and open to all options in the catalog.
 - MANGLISH / TRANSLITERATION PURITY:
   - When responding in transliterated languages (Manglish, Hinglish, Tanglish), use ONLY 100% English alphabet letters. Never mix regional script characters into Latin words.
   - NO HYPHENS (-): Real humans never type hyphens attached to words in chat (e.g., use 'Juvelle inte', 'Kerala yil', 'deliverykku').
@@ -308,17 +325,19 @@ def generate_live_neural_reply(
     chat_input: str,
     history: List[Dict[str, Any]],
     lifecycle_info: Optional[Dict[str, Any]] = None,
-    crm_profile: Optional[Dict[str, Any]] = None
+    crm_profile: Optional[Dict[str, Any]] = None,
+    is_voice: bool = False
 ) -> str:
     """
     Executes live neural AI generation using Google Gemini model with session lifecycle guidance,
     customer CRM context, strict language mirroring, candidate cascade, and RAG grounding.
     """
-    # 1. Detect language
+    # 1. Detect language (relying on current message with is_voice flag)
     detected_lang = detect_query_language(
         message=chat_input,
         history=history,
-        preferred_language=crm_profile.get("preferred_language") if crm_profile else None
+        preferred_language=None,
+        is_voice=is_voice
     )
 
     state = lifecycle_info.get("lifecycle_state", "first_contact") if lifecycle_info else "first_contact"
@@ -412,21 +431,19 @@ def generate_live_neural_reply(
                 "'Hey there! Welcome to Juvelle. Nammal daily and office wear Churidar topsil specialize cheyyunnu. Enganeya help cheyyendath?'"
             )
     elif state == "returning_session":
-        crm_size = crm_profile.get("preferred_size") if crm_profile else None
-        size_hint = f" (Customer previously looked for size {crm_size})" if crm_size else ""
         if detected_lang == "english":
             lifecycle_directive = (
-                f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
+                "SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity). "
                 "Start your reply in English by welcoming them back warmly: 'Welcome back to Juvelle! How can I help you today?' before answering."
             )
         elif detected_lang == "hinglish":
             lifecycle_directive = (
-                f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
+                "SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity). "
                 "Start your reply in Hinglish by welcoming them back warmly: 'Welcome back to Juvelle! Kaise help karoon?' before answering."
             )
         else:
             lifecycle_directive = (
-                f"SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity){size_hint}. "
+                "SESSION DIRECTIVE: RETURNING CUSTOMER (Resuming after > 3 hrs inactivity). "
                 "Start your reply in Manglish by welcoming them back warmly: 'Welcome back to Juvelle! Enganeya help cheyyendath?' before answering."
             )
     else:
@@ -435,10 +452,10 @@ def generate_live_neural_reply(
             "DO NOT repeat 'Welcome to Juvelle' or deliver a brand intro! Jump straight into answering their question naturally and directly."
         )
 
-    # 6. CRM Context Snippet
+    # 6. CRM Context Snippet (Do NOT pass unprompted size/location to prevent unsolicited assumptions)
     crm_context = ""
-    if crm_profile and (crm_profile.get("preferred_size") or crm_profile.get("location") or crm_profile.get("stage")):
-        crm_context = f"\nCustomer CRM Profile: Size={crm_profile.get('preferred_size', 'Unknown')}, Location={crm_profile.get('location', 'Unknown')}, Stage={crm_profile.get('stage', 'New Lead')}, Language={detected_lang}\n"
+    if crm_profile and crm_profile.get("stage"):
+        crm_context = f"\nCustomer CRM Status: Stage={crm_profile.get('stage', 'New Lead')}, Language={detected_lang}\n"
 
     # 7. Build conversation prompt
     dialogue_history = ""
@@ -515,11 +532,12 @@ def generate_live_neural_reply(
 def generate_juvelle_response(
     chat_input: str,
     session_id: str = "default_tester",
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    is_voice: bool = False
 ) -> List[str]:
     """
     Processes customer messages with full Session Lifecycle Management, Multi-User Isolation,
-    Automated CRM Profiling, Strict Language Locking, and Real Neural AI generation.
+    Automated CRM Profiling, Dynamic Turn-by-Turn Script Adaptation, and Real Neural AI generation.
     """
     effective_user_id = user_id or session_id
 
@@ -551,8 +569,8 @@ def generate_juvelle_response(
     except Exception:
         pass
 
-    # 6. Generate concise, session-aware neural response
-    ai_reply = generate_live_neural_reply(chat_input, history, lifecycle_info, crm_profile)
+    # 6. Generate concise, session-aware neural response with is_voice flag
+    ai_reply = generate_live_neural_reply(chat_input, history, lifecycle_info, crm_profile, is_voice=is_voice)
 
     # 7. Mark message as replied in MCP queue
     mark_message_replied(message_id=msg_id, ai_reply=ai_reply)
@@ -577,7 +595,8 @@ def generate_juvelle_response(
 def generate_juvelle_reply(
     customer_message: str,
     session_id: str = "default_tester",
-    customer_name: Optional[str] = None
+    customer_name: Optional[str] = None,
+    is_voice: bool = False
 ) -> str:
     """
     Convenience wrapper returning a single clean string response for voice notes and live calls.
@@ -585,7 +604,8 @@ def generate_juvelle_reply(
     msgs = generate_juvelle_response(
         chat_input=customer_message,
         session_id=session_id,
-        user_id=customer_name or session_id
+        user_id=customer_name or session_id,
+        is_voice=is_voice
     )
     return " ".join(msgs)
 
