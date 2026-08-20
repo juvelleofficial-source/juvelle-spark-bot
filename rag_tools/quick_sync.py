@@ -112,9 +112,9 @@ def quick_sync(file_path: str = None, recreate: bool = False, verbose: bool = Tr
                 "source_uri": "juvelle://sales/ordering_and_payment.md",
                 "raw_text": (
                     "Website: Juvelle does NOT have an official website yet. "
-                    "How to Order: Customers place orders directly in chat by sending a screenshot of the desired Churidar top "
-                    "along with their required size (S, M, L, XL, XXL). "
-                    "Payment Method: Online payment only (UPI, Google Pay, PhonePe, Paytm, direct Bank Transfer). "
+                    "How to Order: Order assistance is handled by our human support coordinators on this page. "
+                    "AI Scope: The AI assistant provides product details, fabrics, and size guidance, but cannot place bookings or confirm orders directly. "
+                    "Payment Method: Online advance payment only (UPI, Google Pay, PhonePe, Paytm, direct Bank Transfer). "
                     "Cash on Delivery (COD) is NOT available to ensure rapid next-day dispatch."
                 )
             },
