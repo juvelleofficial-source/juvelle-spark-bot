@@ -77,13 +77,23 @@ def detect_query_language(
     dominant_script, max_count = max(script_counts.items(), key=lambda x: x[1])
     if max_count >= 2:
         if is_voice:
-            # Voice messages default to Latin transliteration for Indian regional languages
-            if dominant_script == "malayalam_script":
-                return "manglish"
-            elif dominant_script == "hindi_script":
-                return "hinglish"
-            elif dominant_script == "tamil_script":
-                return "tanglish"
+            # Check if customer previously explicitly typed in native script
+            prev_had_native_script = False
+            if history:
+                for turn in reversed(history[-4:]):
+                    if turn.get("role") == "user":
+                        prev_text = turn.get("content", "")
+                        if len(re.findall(r'[ഀ-ൿ]', prev_text)) >= 2:
+                            prev_had_native_script = True
+                            break
+            if not prev_had_native_script:
+                # Voice messages default to Latin transliteration for Indian regional languages
+                if dominant_script == "malayalam_script":
+                    return "manglish"
+                elif dominant_script == "hindi_script":
+                    return "hinglish"
+                elif dominant_script == "tamil_script":
+                    return "tanglish"
         return dominant_script
 
     words = set(re.findall(r'[a-zA-Z]+', msg_clean))

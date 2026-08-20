@@ -76,14 +76,24 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
 
                         if sender_username != "juvelle.store":
                             t_start = time.time()
+                            recipient_target = sender_id or "1701855650538450"
 
-                            # Show immediate typing indicator
-                            try:
-                                send_meta_sender_action(recipient_id=sender_id or "1701855650538450", action="mark_seen")
-                                send_meta_sender_action(recipient_id=sender_id or "1701855650538450", action="typing_on")
-                            except Exception:
-                                pass
-                            
+                            # Start continuous dynamic typing indicator
+                            typing_active = True
+                            async def _poller_typing_loop():
+                                try:
+                                    send_meta_sender_action(recipient_id=recipient_target, action="mark_seen")
+                                except Exception:
+                                    pass
+                                while typing_active:
+                                    try:
+                                        send_meta_sender_action(recipient_id=recipient_target, action="typing_on")
+                                    except Exception:
+                                        pass
+                                    await asyncio.sleep(3.5)
+
+                            typing_task = asyncio.create_task(_poller_typing_loop())
+
                             # Check if audio attachment exists
                             is_audio = False
                             audio_url = None
@@ -93,36 +103,49 @@ async def live_instagram_poll_worker(poll_interval: float = 0.5):
                                     is_audio = True
                                     audio_url = att.get("payload", {}).get("url") or att.get("file_url")
                                     break
-                                    
+
                             if is_audio and audio_url:
                                 logger.info(f"[AUTONOMOUS BOT] Detected Audio Attachment from @{sender_username}. Downloading...")
                                 audio_res = await asyncio.to_thread(download_audio_bytes, audio_url)
                                 if audio_res:
                                     audio_bytes, mime = audio_res
-                                    logger.info(f"[AUTONOMOUS BOT] Decoding audio ({mime}, {len(audio_bytes)} bytes) with Gemini 2.0 Flash...")
+                                    logger.info(f"[AUTONOMOUS BOT] Decoding audio ({mime}, {len(audio_bytes)} bytes) with Gemini Multimodal Audio...")
                                     text = await asyncio.to_thread(transcribe_and_understand_voice_note, audio_bytes, mime)
                                     logger.info(f"[AUTONOMOUS BOT] Transcribed voice message: '{text}'")
                             elif not text and text == "":
                                 logger.info(f"[AUTONOMOUS BOT] Detected Voice Note event from @{sender_username} ({sender_id}). Generating dynamic AI context response...")
                                 text = "Customer sent an Instagram voice message inquiry."
-                                
+
                             if text:
                                 logger.info(f"[AUTONOMOUS BOT] Running Gemini AI dynamic reasoning for @{sender_username}: '{text}'")
-                                
+
                                 # Pure Dynamic AI response from Gemini Spark Agent + Qdrant RAG + Session Memory
-                                reply = generate_juvelle_reply(
+                                reply = await asyncio.to_thread(
+                                    generate_juvelle_reply,
                                     customer_message=text,
                                     session_id=sender_id or "customer_01",
-                                    customer_name=sender_username or "Customer"
+                                    customer_name=sender_username or "Customer",
+                                    is_voice=bool(is_audio)
                                 )
-                                
+
+                                # Stop typing indicator
+                                typing_active = False
+                                typing_task.cancel()
+                                try:
+                                    send_meta_sender_action(recipient_id=recipient_target, action="typing_off")
+                                except Exception:
+                                    pass
+
                                 # Dispatch reply to Instagram DM
                                 res = send_meta_graph_reply(
-                                    recipient_id=sender_id or "1701855650538450",
+                                    recipient_id=recipient_target,
                                     message_text=reply
                                 )
                                 t_total = time.time() - t_start
                                 logger.info(f"[AUTONOMOUS BOT] Auto-reply dispatched in {t_total:.2f}s | Status: {res.get('status')}")
+                            else:
+                                typing_active = False
+                                typing_task.cancel()
                                 
         except Exception as e:
             logger.debug(f"[AUTONOMOUS BOT] Poller notice: {e}")

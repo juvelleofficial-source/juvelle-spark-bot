@@ -378,7 +378,7 @@ async def process_and_reply_async(
                 send_meta_sender_action(recipient_id=sender_id, action="typing_on")
             except Exception as e_typing:
                 logger.debug(f"Dynamic typing indicator ping notice: {e_typing}")
-            await asyncio.sleep(4.0)
+            await asyncio.sleep(3.5)
 
     typing_task = asyncio.create_task(_dynamic_typing_loop())
 
@@ -389,14 +389,14 @@ async def process_and_reply_async(
 
         logger.info(f"[AUTONOMOUS AI WORKER] Processing {platform} message from {sender_id} (Audio: {bool(audio_url)}): '{message_text}'")
 
-        # 1. If voice note audio_url is present, transcribe it
+        # 1. If voice note audio_url is present, transcribe it asynchronously
         customer_query = message_text
         if audio_url:
             logger.info(f"[AUTONOMOUS AI WORKER] Downloading voice note for transcription: {audio_url}")
-            audio_res = download_audio_bytes(audio_url)
+            audio_res = await asyncio.to_thread(download_audio_bytes, audio_url)
             if audio_res:
                 audio_bytes, mime = audio_res
-                transcript = transcribe_and_understand_voice_note(audio_bytes, mime)
+                transcript = await asyncio.to_thread(transcribe_and_understand_voice_note, audio_bytes, mime)
                 if transcript:
                     logger.info(f"[AUTONOMOUS AI WORKER] Voice note transcribed: '{transcript}'")
                     customer_query = transcript
@@ -405,8 +405,9 @@ async def process_and_reply_async(
             else:
                 customer_query = "Customer sent a voice note inquiring about Juvelle daily and office wear churidar tops."
 
-        # 2. Generate grounded AI response
-        reply_text = generate_juvelle_reply(
+        # 2. Generate grounded AI response asynchronously so typing loop is not starved
+        reply_text = await asyncio.to_thread(
+            generate_juvelle_reply,
             customer_message=customer_query,
             session_id=sender_id,
             customer_name=sender_id,
