@@ -402,7 +402,8 @@ def generate_live_neural_reply(
         for turn in history[-4:]:
             role = "Customer" if turn.get("role") == "user" else "Juvelle AI"
             content = turn.get('content', '')
-            # Strip previous hallucinations mentioning "S size" unprompted
+            # Clean up prior unprompted "S size" hallucinations from historical context so the LLM does not repeat them
+            content = re.sub(r'\b(size\s*S|S\s*size)\b', 'sizes S-XXL', content, flags=re.IGNORECASE)
             dialogue_history += f"{role}: {content}\n"
 
     full_prompt = (
@@ -411,7 +412,8 @@ def generate_live_neural_reply(
         f"{lifecycle_directive}\n"
         f"{rag_context}\n\n"
         f"Conversation History:\n{dialogue_history}\n"
-        f"CRITICAL REMINDER: Respond directly to the Customer's latest message in the required language ({detected_lang}). Never guess unprompted sizes or claim to store personal dossiers.\n"
+        f"CRITICAL REMINDER: You are Juvelle's customer support AI. You do NOT have customer order databases, personal names, tracking databases, or customer size memories. "
+        f"Always answer directly in {detected_lang} without assuming specific sizes or personal order history.\n"
         f"Customer: {chat_input}\n"
         f"Juvelle AI:"
     )
