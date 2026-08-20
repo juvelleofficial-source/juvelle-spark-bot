@@ -296,6 +296,27 @@ def generate_live_neural_reply(
     turn_num = lifecycle_info.get("turn_count", 1) if lifecycle_info else 1
     cleaned_input = chat_input.lower().strip().rstrip("!.,? ")
 
+    # 2. Strict Deterministic Anti-Hallucination Guard for Personal Memory / PII Inquiries
+    MEMORY_PROBE_TRIGGERS = [
+        "ormayundo", "ormund", "ormundo", "njan aaranu", "who am i", "remember me",
+        "remember my", "you remember", "yaad hai", "pehechana", "pata hai mera",
+        "my size", "mera size", "ente size", "my order", "pichla order", "pandu medicha",
+        "my address", "ente address", "phone number", "my phone", "tracking id",
+        "tracking number", "favourite color", "favorite color", "favorite fabric",
+        "complaint", "kya mangwaya tha", "entha medichathu", "ente peru"
+    ]
+    if any(trigger in cleaned_input for trigger in MEMORY_PROBE_TRIGGERS):
+        if detected_lang == "english":
+            return "I am an AI assistant and do not store personal customer profiles, sizes, or past order records. How can I assist you with our Juvelle Churidar tops today?"
+        elif detected_lang == "hinglish":
+            return "Main ek AI assistant hoon aur personal customer data, sizes ya pichle order records store nahi karta hoon. Aaj main Juvelle Churidar tops mein aapki kya madad karoon?"
+        elif detected_lang == "hindi_script":
+            return "मैं एक AI असिस्टेंट हूँ और ग्राहकों का पर्सनल डेटा, साइज़ या पिछला ऑर्डर रिकॉर्ड स्टोर नहीं करता हूँ। मैं विमेंस चूड़ीदार टॉप्स में आपकी क्या मदद करूँ?"
+        elif detected_lang == "malayalam_script":
+            return "ഞാൻ ഒരു AI അസിസ്റ്റന്റ് ആയതുകൊണ്ട് കസ്റ്റമറുടെ വ്യക്തിഗത വിവരങ്ങളോ ഓർഡർ ഹിസ്റ്ററിയോ സൂക്ഷിക്കാറില്ല. ചുരിദാർ ടോപ്പുകളെക്കുറിച്ച് എങ്ങനെയാണ് സഹായിക്കേണ്ടത്?"
+        else:
+            return "Njan oru AI assistant aanu, athukondu thanne personal data-yo customer profiles-o store cheyyarilla. Juvelle Churidar topsil enganeya help cheyyendath?"
+
     # 3. Retrieve grounded knowledge chunks from Qdrant Cloud / BM25
     retrieved_chunks = retrieve_hybrid_context(chat_input, top_k=3)
     rag_context = ""
