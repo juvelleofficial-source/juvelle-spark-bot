@@ -28,6 +28,21 @@ MCP_TOOLS_MANIFEST = [
     },
 
     {
+        "name": "transcribe_audio_url",
+        "description": "Downloads and transcribes an audio voice note from a URL. Returns the exact transcribed text in the spoken language.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "audio_url": {
+                    "type": "string",
+                    "description": "The URL of the audio file to transcribe."
+                }
+            },
+            "required": ["audio_url"]
+        }
+    },
+
+    {
         "name": "get_pending_facebook_messages",
         "description": "Retrieves pending incoming customer messages received from Facebook Messenger, WhatsApp, or Instagram via Webhooks that require an AI response. Returns text messages as well as audio_url for customer voice notes. For voice notes, use the transcribe_audio_url tool to transcribe the audio_url.",
         "inputSchema": {
@@ -166,6 +181,27 @@ def execute_mcp_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any
             "sender_id": sender_id,
             "message": "Customer profile note persisted successfully."
         }
+
+
+    elif tool_name == "transcribe_audio_url":
+        audio_url = arguments.get("audio_url")
+        if not audio_url:
+            return {"error": "audio_url is required"}
+            
+        try:
+            from core.audio_processor import download_audio_bytes, transcribe_and_understand_voice_note
+            audio_data, mime = download_audio_bytes(audio_url)
+            if audio_data:
+                transcript = transcribe_and_understand_voice_note(audio_data, mime)
+                return {
+                    "audio_url": audio_url,
+                    "transcript": transcript,
+                    "status": "success" if transcript else "failed_transcription"
+                }
+            else:
+                return {"error": "Could not download audio from URL"}
+        except Exception as e:
+            return {"error": str(e)}
 
 
     elif tool_name == "transcribe_audio_url":
