@@ -401,14 +401,17 @@ def generate_live_neural_reply(
     if history:
         for turn in history[-4:]:
             role = "Customer" if turn.get("role") == "user" else "Juvelle AI"
-            dialogue_history += f"{role}: {turn.get('content', '')}\n"
+            content = turn.get('content', '')
+            # Strip previous hallucinations mentioning "S size" unprompted
+            dialogue_history += f"{role}: {content}\n"
 
     full_prompt = (
         f"{JUVELLE_SYSTEM_PROMPT}\n\n"
         f"{lang_directive}\n\n"
         f"{lifecycle_directive}\n"
         f"{rag_context}\n\n"
-        f"Conversation History:\n{dialogue_history}"
+        f"Conversation History:\n{dialogue_history}\n"
+        f"CRITICAL REMINDER: Respond directly to the Customer's latest message in the required language ({detected_lang}). Never guess unprompted sizes or claim to store personal dossiers.\n"
         f"Customer: {chat_input}\n"
         f"Juvelle AI:"
     )
